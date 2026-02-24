@@ -103,12 +103,12 @@ app.delete('/api/products/:id', async (req, res) => {
 app.get('/api/sales', async (req, res) => {
     try {
         const [sales] = await pool.query('SELECT * FROM sales ORDER BY date DESC LIMIT 100');
-        
+
         // Em um sistema real e grande, as vendas seriam paginadas e fariamos JOIN para trazer os itens de cada venda de uma vez.
         // Para simplificar essa transição do localStorage para o banco:
         for (let i = 0; i < sales.length; i++) {
             const [items] = await pool.query(
-                'SELECT si.*, p.name FROM sale_items si JOIN products p ON si.product_id = p.id WHERE si.sale_id = ?', 
+                'SELECT si.*, p.name FROM sale_items si JOIN products p ON si.product_id = p.id WHERE si.sale_id = ?',
                 [sales[i].id]
             );
             sales[i].items = items;
@@ -124,7 +124,7 @@ app.get('/api/sales', async (req, res) => {
 // 2. Finalizar uma venda
 app.post('/api/sales', async (req, res) => {
     const { seller, items, subtotal, discount, total, method } = req.body;
-    
+
     // Iniciar uma transação MySQL (Garante que se falhar no meio, ele cancela tudo e não salva pela metade)
     const connection = await pool.getConnection();
     try {
@@ -178,6 +178,10 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ error: 'Erro no login' });
     }
 });
+
+const path = require('path');
+// Servir arquivos estáticos do frontend
+app.use(express.static(path.join(__dirname, '../')));
 
 // Inicializando o servidor
 app.listen(PORT, () => {
