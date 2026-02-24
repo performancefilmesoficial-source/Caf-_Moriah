@@ -184,6 +184,6 @@ const path = require('path');
 app.use(express.static(path.join(__dirname, '../')));
 
 // Inicializando o servidor
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor backend rodando na porta ${PORT}`);
 });
