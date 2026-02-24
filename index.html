@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moriah Café - PDV & Gestão</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        moriah: {
+                            brown: '#4A3728',
+                            dark: '#2D1E15',
+                            cream: '#F5F5DC',
+                            teal: '#004D40',
+                            gray: '#212121',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #fcfcfc;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 1rem;
+        }
+
+        @media (max-width: 640px) {
+            .product-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.75rem;
+            }
+        }
+
+        @media (min-width: 768px) {
+            .product-grid {
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            }
+        }
+
+        .mobile-nav-shadow {
+            box-shadow: 0 -4px 20px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            aside {
+                display: none !important;
+            }
+
+            main {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+            }
+
+            .print-only {
+                display: block !important;
+            }
+
+            .bg-stone-50 {
+                background: white !important;
+            }
+
+            .shadow-sm,
+            .shadow-lg,
+            .shadow-2xl {
+                box-shadow: none !important;
+                border: 1px solid #eee !important;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-stone-50 text-stone-900">
+    <div id="root" class="flex items-center justify-center h-screen bg-stone-50">
+        <div class="text-center">
+            <div
+                class="w-12 h-12 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin mx-auto mb-4">
+            </div>
+            <p class="text-stone-500 font-medium animate-pulse">Carregando Moriah Café...</p>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const initialProducts = [
+            { id: 1, name: 'Café Espresso', category: 'Café', cost: 2.5, price: 7.0, stock: 50, minStock: 10, sku: 'C001' },
+            { id: 2, name: 'Cappuccino', category: 'Café', cost: 4.0, price: 12.0, stock: 30, minStock: 10, sku: 'C002' },
+            { id: 3, name: 'Módulo V60 Moriah', category: 'Acessórios', cost: 85.0, price: 145.0, stock: 4, minStock: 5, sku: 'A001' },
+            { id: 4, name: 'Água Mineral', category: 'Bebidas Prontas', cost: 1.2, price: 4.5, stock: 100, minStock: 20, sku: 'B001' },
+        ];
+
+        const LucideIcon = ({ name, className }) => {
+            const [mounted, setMounted] = React.useState(false);
+            React.useEffect(() => setMounted(true), []);
+            if (!mounted || typeof lucide === 'undefined') return <span className={`inline-block ${className || 'w-5 h-5'}`} />;
+
+            const icons = lucide.icons || lucide;
+            const pascalName = name.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('');
+            const iconData = icons[pascalName] || icons[name] || icons['HelpCircle'] || icons['help-circle'];
+
+            if (!iconData || !Array.isArray(iconData)) return <span className={`inline-block ${className || 'w-5 h-5'}`}>?</span>;
+
+            try {
+                const paths = iconData.map(([tag, attrs]) => {
+                    const attrStr = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ');
+                    return `<${tag} ${attrStr}></${tag}>`;
+                }).join('');
+                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-${name}">${paths}</svg>`;
+                return <span className={`inline-flex items-center justify-center shrink-0 ${className || 'w-5 h-5'}`} dangerouslySetInnerHTML={{ __html: svg }} />;
+            } catch (e) {
+                return <span className={className || 'w-5 h-5'}>!</span>;
+            }
+        };
+
+        const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
+            <button onClick={onClick} class={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-moriah-brown text-white' : 'text-stone-500 hover:bg-stone-100'}`}>
+                <LucideIcon name={Icon} className="w-5 h-5" />
+                <span class="font-medium">{label}</span>
+            </button>
+        );
+
+        const App = () => {
+            const [view, setView] = useState('pos');
+            const [products, setProducts] = useState(() => {
+                const saved = localStorage.getItem('moriah_products');
+                return saved ? JSON.parse(saved) : initialProducts;
+            });
+            const [sales, setSales] = useState(() => {
+                const saved = localStorage.getItem('moriah_sales');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [cart, setCart] = useState([]);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+            const [isPixModalOpen, setIsPixModalOpen] = useState(false);
+            const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+            const [discount, setDiscount] = useState(0);
+            const [currentPixData, setCurrentPixData] = useState({ payload: '', total: 0 });
+            const [lastSale, setLastSale] = useState(null);
+            const [customerPhone, setCustomerPhone] = useState('');
+            const [editingProduct, setEditingProduct] = useState(null);
+            const [periodFilter, setPeriodFilter] = useState('always');
+            const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+
+            const initialUsers = [
+                { id: 1, name: 'Administrador', username: 'admin', password: 'root' }
+            ];
+
+            const [users, setUsers] = useState(() => {
+                const saved = localStorage.getItem('moriah_users');
+                return saved ? JSON.parse(saved) : initialUsers;
+            });
+
+            const [currentUser, setCurrentUser] = useState(() => {
+                const saved = localStorage.getItem('moriah_current_user');
+                return saved ? JSON.parse(saved) : null;
+            });
+
+            const [customers, setCustomers] = useState(() => {
+                const saved = localStorage.getItem('moriah_customers');
+                return saved ? JSON.parse(saved) : [];
+            });
+
+
+
+            useEffect(() => { localStorage.setItem('moriah_products', JSON.stringify(products)); }, [products]);
+            useEffect(() => { localStorage.setItem('moriah_sales', JSON.stringify(sales)); }, [sales]);
+            useEffect(() => { localStorage.setItem('moriah_users', JSON.stringify(users)); }, [users]);
+            useEffect(() => {
+                if (currentUser) localStorage.setItem('moriah_current_user', JSON.stringify(currentUser));
+                else localStorage.removeItem('moriah_current_user');
+            }, [currentUser]);
+            useEffect(() => { localStorage.setItem('moriah_customers', JSON.stringify(customers)); }, [customers]);
+
+            const logoUrl = 'Verde.png';
+
+            const stats = useMemo(() => {
+                const today = new Date().toLocaleDateString();
+                const todaySales = sales.filter(s => new Date(s.date).toLocaleDateString() === today);
+                const revenue = todaySales.reduce((acc, curr) => acc + curr.total, 0);
+                const lowStock = products.filter(p => p.stock < p.minStock);
+                return { revenue, lowStockCount: lowStock.length };
+            }, [sales, products]);
+
+            const addToCart = (product) => {
+                if (product.stock <= 0) return;
+                setCart(curr => {
+                    const existing = curr.find(i => i.id === product.id);
+                    if (existing) return curr.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
+                    return [...curr, { ...product, quantity: 1 }];
+                });
+            };
+
+            const removeFromCart = (id) => setCart(curr => curr.filter(i => i.id !== id));
+            const updateCartQuantity = (id, delta) => {
+                setCart(curr => curr.map(i => {
+                    if (i.id === id) {
+                        const newQty = Math.max(1, i.quantity + delta);
+                        return { ...i, quantity: newQty };
+                    }
+                    return i;
+                }));
+            };
+
+            const generatePixPayload = (amount) => {
+                const pad = (n) => n.toString().padStart(2, '0');
+                const key = "63644739000156";
+                const name = "MORIAH CAFE";
+                const city = "SAO PAULO";
+
+                let payload = "000201";
+                let merchantInfo = "0014br.gov.bcb.pix" + "0114" + key;
+                payload += "26" + pad(merchantInfo.length) + merchantInfo;
+                payload += "520400005303986";
+                let amtStr = amount.toFixed(2);
+                payload += "54" + pad(amtStr.length) + amtStr;
+                payload += "5802BR";
+                payload += "59" + pad(name.length) + name;
+                payload += "60" + pad(city.length) + city;
+                payload += "62070503***6304";
+
+                let crc = 0xFFFF;
+                for (let i = 0; i < payload.length; i++) {
+                    crc ^= (payload.charCodeAt(i) << 8);
+                    for (let j = 0; j < 8; j++) {
+                        crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
+                    }
+                }
+                const crcHex = (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+                return payload + crcHex;
+            };
+
+            const finalizeSale = (method) => {
+                const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
+                const total = subtotal * (1 - (discount / 100));
+
+                if (method === 'PIX' && !isPixModalOpen) {
+                    const payload = generatePixPayload(total);
+                    setCurrentPixData({ payload, total });
+                    setIsPixModalOpen(true);
+                    return;
+                }
+
+                const newSale = {
+                    id: Date.now(),
+                    seller: currentUser.name || currentUser.username,
+                    items: cart,
+                    subtotal,
+                    discount,
+                    total,
+                    method,
+                    date: new Date().toISOString()
+                };
+
+                setProducts(curr => curr.map(p => {
+                    const cartItem = cart.find(ci => ci.id === p.id);
+                    return cartItem ? { ...p, stock: p.stock - cartItem.quantity } : p;
+                }));
+
+                setSales(curr => [newSale, ...curr]);
+                setCart([]);
+                setDiscount(0);
+                setIsCheckoutOpen(false);
+                setIsPixModalOpen(false);
+                setLastSale(newSale);
+                setIsSuccessModalOpen(true);
+            };
+
+            const sendWhatsAppReceipt = () => {
+                if (!customerPhone) return;
+                let message = `Obrigado por escolher o Café Moriah!\nFicamos felizes em fazer parte da sua rotina.\n\nPara acompanhar as novidades, siga a gente no Instagram: @cafemoriah__`;
+
+                const cleanPhone = customerPhone.replace(/\D/g, '');
+                const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`;
+                window.open(url, '_blank');
+                setIsSuccessModalOpen(false);
+                setCustomerPhone('');
+                setView('pos');
+            };
+
+            const deleteProduct = (id) => {
+                if (confirm('Tem certeza que deseja excluir este produto?')) {
+                    setProducts(curr => curr.filter(p => p.id !== id));
+                }
+            };
+            const renderView = (overrideView) => {
+                const currentView = overrideView || view;
+                switch (currentView) {
+                    case 'dashboard': return (
+                        <div class="space-y-6 animate-in fade-in duration-500">
+                            <h2 class="text-2xl font-bold text-stone-900">Dashboard</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-100">
+                                    <div class="flex items-center gap-4">
+                                        <div class="p-3 bg-emerald-100 text-emerald-600 rounded-xl"><LucideIcon name="trending-up" className="w-6 h-6" /></div>
+                                        <div>
+                                            <p class="text-stone-500 text-sm">Faturamento Hoje</p>
+                                            <h3 class="text-2xl font-bold text-stone-900">R$ {stats.revenue.toFixed(2)}</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-100">
+                                    <div class="flex items-center gap-4">
+                                        <div class="p-3 bg-red-100 text-red-600 rounded-xl"><LucideIcon name="alert-triangle" className="w-6 h-6" /></div>
+                                        <div>
+                                            <p class="text-stone-500 text-sm">Estoque Baixo</p>
+                                            <h3 class="text-2xl font-bold text-stone-900">{stats.lowStockCount} Produtos</h3>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-100">
+                                <h4 class="font-bold mb-4 text-stone-900">Alertas de Reposição</h4>
+                                <div class="space-y-3">
+                                    {products.filter(p => p.stock < p.minStock).map(p => (
+                                        <div key={p.id} class="flex items-center justify-between p-3 bg-stone-50 rounded-lg">
+                                            <span class="font-medium text-stone-800">{p.name}</span>
+                                            <span class="text-red-500 font-bold">{p.stock} em estoque</span>
+                                        </div>
+                                    ))}
+                                    {stats.lowStockCount === 0 && <p class="text-stone-400">Tudo em ordem no estoque.</p>}
+                                </div>
+                            </div>
+                        </div>
+                    );
+
+                    case 'pos': return (
+                        <div class="flex flex-col lg:flex-row gap-6 h-[calc(100vh-140px)] md:h-[calc(100vh-120px)] animate-in fade-in duration-500 relative">
+                            {cart.length > 0 && (
+                                <button onClick={() => setIsMobileCartOpen(true)} class="lg:hidden fixed bottom-24 right-6 z-40 bg-moriah-brown text-white p-4 rounded-full shadow-2xl flex items-center gap-2 animate-bounce">
+                                    <LucideIcon name="shopping-cart" className="w-6 h-6" />
+                                    <span class="font-bold">{cart.reduce((acc, curr) => acc + curr.quantity, 0)}</span>
+                                </button>
+                            )}
+                            <div class="flex-1 space-y-4 overflow-y-auto pr-2">
+                                <div class="relative">
+                                    <div class="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"><LucideIcon name="search" className="w-5 h-5" /></div>
+                                    <input type="text" placeholder="Buscar produto por nome ou SKU..." class="w-full pl-12 pr-4 py-3 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                                </div>
+                                <div class="product-grid">
+                                    {products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase())).map(p => (
+                                        <button key={p.id} onClick={() => addToCart(p)} class="flex flex-col justify-between bg-white p-4 rounded-2xl shadow-sm border border-stone-100 hover:border-moriah-brown transition-all group overflow-hidden h-32">
+                                            <p class="font-bold text-base text-left text-stone-900 leading-tight">{p.name}</p>
+                                            <div class="flex justify-between items-center mt-1">
+                                                <span class="text-moriah-brown font-bold text-lg">R$ {p.price.toFixed(2)}</span>
+                                                <span class={`text-[10px] px-2 py-0.5 rounded-full ${p.stock < p.minStock ? 'bg-red-100 text-red-600' : 'bg-stone-100 text-stone-500'}`}>Estoque: {p.stock}</span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div class={`fixed lg:static inset-0 lg:inset-auto z-[60] lg:z-0 w-full lg:w-96 bg-white ${isMobileCartOpen ? 'translate-y-0' : 'translate-y-full lg:translate-y-0'} transition-transform duration-300 ease-in-out rounded-t-3xl lg:rounded-3xl shadow-2xl lg:shadow-lg border-t lg:border border-stone-100 flex flex-col overflow-hidden text-stone-900`}>
+                                <div class="p-6 border-b border-stone-50 flex justify-between items-center bg-stone-50 md:bg-white">
+                                    <div class="flex items-center gap-2 text-stone-900">
+                                        <button onClick={() => setIsMobileCartOpen(false)} class="lg:hidden p-2 -ml-2 text-stone-400 hover:text-stone-600"><LucideIcon name="chevron-down" className="w-6 h-6" /></button>
+                                        <h3 class="font-bold text-xl">Carrinho</h3>
+                                    </div>
+                                    <button onClick={() => setCart([])} class="p-2 text-stone-400 hover:text-red-500 transition-colors"><LucideIcon name="trash-2" className="w-5 h-5" /></button>
+                                </div>
+                                <div class="flex-1 overflow-y-auto p-6 space-y-4">
+                                    {cart.map(item => (
+                                        <div key={item.id} class="flex gap-3 items-center">
+                                            <div class="flex-1 text-left">
+                                                <p class="font-bold text-sm">{item.name}</p>
+                                                <p class="text-xs text-stone-400">R$ {item.price.toFixed(2)} un.</p>
+                                            </div>
+                                            <div class="flex items-center gap-3 bg-stone-100 rounded-full px-2 py-1">
+                                                <button onClick={() => updateCartQuantity(item.id, -1)} class="w-6 h-6 flex items-center justify-center font-bold">-</button>
+                                                <span class="font-bold text-sm">{item.quantity}</span>
+                                                <button onClick={() => updateCartQuantity(item.id, 1)} class="w-6 h-6 flex items-center justify-center font-bold">+</button>
+                                            </div>
+                                            <p class="font-bold w-20 text-right">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                                        </div>
+                                    ))}
+                                    {cart.length === 0 && (
+                                        <div class="text-center py-12 text-stone-300 flex flex-col items-center">
+                                            <LucideIcon name="shopping-cart" className="w-12 h-12 mb-2 opacity-20" />
+                                            <p>Carrinho vazio</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div class="p-6 bg-stone-50 border-t border-stone-100 space-y-4">
+                                    <div class="flex justify-between items-center text-xl font-bold">
+                                        <span>Total</span>
+                                        <span class="text-moriah-brown">R$ {cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0).toFixed(2)}</span>
+                                    </div>
+                                    <button
+                                        disabled={cart.length === 0}
+                                        onClick={() => { setIsMobileCartOpen(false); setIsCheckoutOpen(true); }}
+                                        class="w-full py-4 bg-moriah-brown text-white rounded-2xl font-bold hover:bg-moriah-dark transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        <span>Finalizar Venda</span><LucideIcon name="arrow-right" className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+                            {isCheckoutOpen && (
+                                <div class="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                                    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                                        <div class="p-6 border-b border-stone-100 flex justify-between items-center text-stone-900">
+                                            <h3 class="text-xl font-bold">Finalizar Venda</h3>
+                                            <button onClick={() => setIsCheckoutOpen(false)} class="text-stone-400 hover:text-stone-600 p-2"><LucideIcon name="x" className="w-6 h-6" /></button>
+                                        </div>
+                                        <div class="p-8 space-y-6 text-stone-900">
+                                            <div class="space-y-2">
+                                                <div class="flex justify-between text-stone-500">
+                                                    <span>Subtotal</span><span>R$ {cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0).toFixed(2)}</span>
+                                                </div>
+                                                <div class="flex items-center gap-4">
+                                                    <span class="text-stone-500 flex-1">Desconto (%)</span>
+                                                    <div class="w-24">
+                                                        <input type="number" min="0" max="100" value={discount} onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))} class="w-full px-3 py-2 bg-stone-100 border border-stone-200 rounded-xl text-right font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" />
+                                                    </div>
+                                                </div>
+                                                <div class="flex justify-between text-2xl font-black text-moriah-brown pt-4 border-t border-dashed border-stone-200">
+                                                    <span>Total Final</span><span>R$ {(cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0) * (1 - discount / 100)).toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                            <div class="space-y-3">
+                                                <p class="text-sm font-bold text-stone-400 uppercase tracking-widest text-left">Forma de Pagamento</p>
+                                                <div class="grid grid-cols-1 gap-2">
+                                                    <button onClick={() => finalizeSale('Dinheiro')} class="flex items-center justify-between p-4 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="banknote" className="w-6 h-6 text-emerald-600" /><span class="font-bold">Dinheiro</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+                                                    </button>
+                                                    <button onClick={() => finalizeSale('Cartão Débito')} class="flex items-center justify-between p-4 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-6 h-6 text-blue-600" /><span class="font-bold">Cartão Débito</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+                                                    </button>
+                                                    <button onClick={() => finalizeSale('Cartão Crédito')} class="flex items-center justify-between p-4 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-6 h-6 text-purple-600" /><span class="font-bold">Cartão Crédito</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+                                                    </button>
+                                                    <button onClick={() => finalizeSale('PIX')} class="flex items-center justify-between p-4 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="qr-code" className="w-6 h-6 text-teal-600" /><span class="font-bold">PIX</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isPixModalOpen && (
+                                <div class="fixed inset-0 bg-moriah-brown/90 backdrop-blur-md z-[60] flex items-center justify-center p-4 text-stone-900">
+                                    <div class="bg-white w-full max-w-sm rounded-[40px] shadow-2xl overflow-hidden p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                                        <div class="w-16 h-1 bg-stone-100 rounded-full mb-6"></div>
+                                        <div class="p-4 bg-teal-50 rounded-2xl mb-4"><LucideIcon name="qr-code" className="w-8 h-8 text-teal-600" /></div>
+                                        <h3 class="text-2xl font-black mb-2 text-stone-900">Pagamento via PIX</h3>
+                                        <p class="text-stone-500 text-sm mb-6">Peça ao cliente para escanear o código abaixo ou use o Copia e Cola.</p>
+                                        <div class="bg-white p-4 rounded-3xl border-4 border-stone-50 mb-6 shadow-inner">
+                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(currentPixData.payload)}`} class="w-48 h-48" alt="PIX QR Code" />
+                                        </div>
+                                        <div class="w-full space-y-4">
+                                            <div class="p-4 bg-stone-50 rounded-2xl border border-stone-100 text-left">
+                                                <p class="text-[10px] uppercase font-bold text-stone-400 mb-1">Copia e Cola</p>
+                                                <div class="flex items-center gap-2">
+                                                    <code class="text-xs text-stone-600 truncate flex-1">{currentPixData.payload}</code>
+                                                    <button onClick={() => { navigator.clipboard.writeText(currentPixData.payload); alert('Código copiado!'); }} class="p-2 hover:bg-stone-200 rounded-lg transition-colors"><LucideIcon name="copy" className="w-4 h-4 text-moriah-brown" /></button>
+                                                </div>
+                                            </div>
+                                            <div class="text-2xl font-black text-teal-600 mb-2">R$ {currentPixData.total.toFixed(2)}</div>
+                                            <button onClick={() => finalizeSale('PIX')} class="w-full py-4 bg-moriah-brown text-white rounded-2xl font-black text-lg hover:bg-moriah-dark transition-all shadow-lg active:scale-95">Confirmar Pagamento</button>
+                                            <button onClick={() => setIsPixModalOpen(false)} class="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Voltar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isSuccessModalOpen && (
+                                <div class="fixed inset-0 bg-stone-900/80 backdrop-blur-md z-[70] flex items-center justify-center p-4 text-stone-900">
+                                    <div class="bg-white w-full max-w-sm rounded-[40px] shadow-2xl overflow-hidden p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                                        <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6 text-emerald-600"><LucideIcon name="check-circle" className="w-10 h-10" /></div>
+                                        <h3 class="text-2xl font-black mb-2 text-stone-900">Venda Finalizada!</h3>
+                                        <p class="text-stone-500 text-sm mb-8">Deseja enviar a mensagem de agradecimento para o WhatsApp do cliente?</p>
+                                        <div class="w-full space-y-4">
+                                            <div class="text-left">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block text-left">WhatsApp do Cliente</label>
+                                                <div class="relative">
+                                                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 font-bold">+55</span>
+                                                    <input type="tel" placeholder="(00) 00000-0000" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} class="w-full pl-12 pr-4 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+                                                </div>
+                                            </div>
+                                            <button onClick={sendWhatsAppReceipt} disabled={!customerPhone} class="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 disabled:opacity-50 flex items-center justify-center gap-3">
+                                                <LucideIcon name="message-circle" className="w-6 h-6" />Enviar Mensagem
+                                            </button>
+                                            <button onClick={() => { setIsSuccessModalOpen(false); setCustomerPhone(''); setView('pos'); }} class="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Agora não</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+
+                    case 'inventory': return (
+                        <div class="space-y-6 animate-in fade-in duration-500">
+                            <div class="flex justify-between items-center text-stone-900">
+                                <h2 class="text-2xl font-bold">Gestão de Inventário</h2>
+                                <button onClick={() => { setView('add_product'); }} class="flex items-center gap-2 bg-moriah-teal text-white px-6 py-2 rounded-xl hover:bg-teal-900 transition-all">
+                                    <LucideIcon name="plus" className="w-4 h-4" />Novo Produto
+                                </button>
+                            </div>
+                            <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden">
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-left min-w-[600px] md:min-w-0">
+                                        <thead class="bg-stone-50 border-b border-stone-100 text-stone-500 text-xs font-medium uppercase tracking-wider">
+                                            <tr>
+                                                <th class="px-6 py-4">Produto</th><th class="px-6 py-4 hidden sm:table-cell">Categoria</th><th class="px-6 py-4">Estoque</th>
+                                                <th class="px-6 py-4 hidden sm:table-cell">Custo</th><th class="px-6 py-4">Venda</th><th class="px-6 py-4 hidden lg:table-cell">Ganhos</th>
+                                                <th class="px-6 py-4 text-right">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-stone-50 text-stone-900">
+                                            {products.map(p => (
+                                                <tr key={p.id} class="hover:bg-stone-50 transition-colors">
+                                                    <td class="px-6 py-4 flex items-center gap-3 min-w-[200px]"><div><p class="font-bold">{p.name}</p><p class="text-xs text-stone-400">{p.sku}</p></div></td>
+                                                    <td class="px-6 py-4 hidden sm:table-cell"><span class="px-2 py-1 bg-stone-100 rounded text-xs text-stone-600">{p.category}</span></td>
+                                                    <td class="px-6 py-4"><span class={`font-bold ${p.stock < p.minStock ? 'text-red-500' : 'text-stone-700'}`}>{p.stock}</span></td>
+                                                    <td class="px-6 py-4 text-stone-500 hidden sm:table-cell">R$ {p.cost.toFixed(2)}</td>
+                                                    <td class="px-6 py-4 font-bold text-moriah-brown whitespace-nowrap">R$ {p.price.toFixed(2)}</td>
+                                                    <td class="px-6 py-4 hidden lg:table-cell whitespace-nowrap"><span class="text-emerald-600 font-medium">R$ {(p.price - p.cost).toFixed(2)}</span><span class="text-[10px] text-emerald-500 ml-1">({(((p.price - p.cost) / p.cost) * 100).toFixed(0)}%)</span></td>
+                                                    <td class="px-6 py-4 text-right">
+                                                        <div class="flex justify-end gap-2">
+                                                            <button onClick={() => { setEditingProduct(p); setView('edit_product'); }} class="p-2 text-stone-400 hover:text-moriah-brown transition-colors hover:bg-stone-100 rounded-lg" title="Editar Produto"><LucideIcon name="pencil" className="w-4 h-4" /></button>
+                                                            <button onClick={() => deleteProduct(p.id)} class="p-2 text-stone-300 hover:text-red-500 transition-colors hover:bg-stone-50 rounded-lg" title="Excluir Produto"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    );
+
+                    case 'sales': {
+                        const filteredSales = sales.filter(s => {
+                            const saleDate = new Date(s.date);
+                            const now = new Date();
+                            if (periodFilter === 'day') return saleDate.toDateString() === now.toDateString();
+                            if (periodFilter === 'week') { const diff = now - saleDate; return diff <= 7 * 24 * 60 * 60 * 1000; }
+                            if (periodFilter === 'month') return saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
+                            return true;
+                        });
+                        return (
+                            <div class="space-y-6 animate-in fade-in duration-500 text-stone-900">
+                                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
+                                    <h2 class="text-2xl font-bold">Relatório de Vendas</h2>
+                                    <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+                                        <div class="flex bg-stone-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto no-scrollbar">
+                                            <button onClick={() => setPeriodFilter('day')} class={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'day' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Hoje</button>
+                                            <button onClick={() => setPeriodFilter('week')} class={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'week' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Semana</button>
+                                            <button onClick={() => setPeriodFilter('month')} class={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'month' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Mês</button>
+                                            <button onClick={() => setPeriodFilter('always')} class={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'always' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Tudo</button>
+                                        </div>
+                                        <button onClick={() => window.print()} class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-moriah-brown text-white px-6 py-2 rounded-xl hover:bg-moriah-dark transition-all shadow-lg"><LucideIcon name="printer" className="w-4 h-4" />Imprimir</button>
+                                    </div>
+                                </div>
+                                <div class="print-only hidden py-8 border-b-2 border-stone-200 mb-8">
+                                    <h1 class="text-3xl font-black text-stone-900">Moriah Café - Relatório de Vendas</h1>
+                                    <p class="text-stone-500">Gerado em: {new Date().toLocaleString()}</p>
+                                    <p class="text-stone-500 font-bold uppercase tracking-widest mt-2">Filtro: {periodFilter === 'always' ? 'Todos os Registros' : periodFilter === 'day' ? 'Vendas de Hoje' : periodFilter === 'week' ? 'Últimos 7 dias' : 'Vendas do Mês'}</p>
+                                </div>
+                                <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden text-sm">
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-left min-w-[500px] md:min-w-0">
+                                            <thead class="bg-stone-50 border-b border-stone-100 text-stone-500 font-medium">
+                                                <tr><th class="px-6 py-4">Vendedor / Data</th><th class="px-6 py-4 hidden sm:table-cell">Itens</th><th class="px-6 py-4">Método</th><th class="px-6 py-4 text-right">Total</th></tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-stone-50">
+                                                {filteredSales.map(s => (
+                                                    <tr key={s.id}>
+                                                        <td class="px-6 py-4">
+                                                            <p class="font-bold">{s.seller || 'Sistema'}</p><p class="text-xs text-stone-400">{new Date(s.date).toLocaleString('pt-BR')}</p>
+                                                        </td>
+                                                        <td class="px-6 py-4 hidden sm:table-cell text-xs text-stone-600">{s.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</td>
+                                                        <td class="px-6 py-4"><span class={`px-2 py-1 rounded text-[10px] font-bold uppercase ${s.method === 'Dinheiro' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{s.method}</span></td>
+                                                        <td class="px-6 py-4 text-right font-bold text-lg">R$ {s.total.toFixed(2)}</td>
+                                                    </tr>
+                                                ))}
+                                                {filteredSales.length === 0 && (<tr><td colspan="4" class="px-6 py-12 text-center text-stone-400">Nenhuma venda registrada neste período.</td></tr>)}
+                                            </tbody>
+                                            {filteredSales.length > 0 && (
+                                                <tfoot class="bg-stone-50 border-t border-stone-100">
+                                                    <tr class="font-black text-lg"><td colspan="3" class="px-6 py-4 text-right">TOTAL ACUMULADO</td><td class="px-6 py-4 text-right text-moriah-brown">R$ {filteredSales.reduce((acc, curr) => acc + curr.total, 0).toFixed(2)}</td></tr>
+                                                </tfoot>
+                                            )}
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                    case 'add_product':
+                    case 'edit_product': {
+                        const isEdit = view === 'edit_product';
+                        return (
+                            <div class="max-w-2xl mx-auto bg-white p-8 rounded-3xl shadow-lg border border-stone-100 animate-in zoom-in-95 duration-300">
+                                <h2 class="text-2xl font-bold mb-6">{isEdit ? 'Editar Produto' : 'Novo Produto'}</h2>
+                                <div class="grid grid-cols-1 gap-8">
+
+
+                                    <form class="space-y-4" onSubmit={(e) => {
+                                        e.preventDefault();
+                                        const formData = new FormData(e.target);
+                                        const productData = {
+                                            id: isEdit ? editingProduct.id : Date.now(),
+                                            name: formData.get('name'),
+                                            category: formData.get('category'),
+                                            cost: parseFloat(formData.get('cost')),
+                                            price: parseFloat(formData.get('price')),
+                                            stock: parseInt(formData.get('stock')),
+                                            minStock: parseInt(formData.get('minStock')),
+                                            sku: formData.get('sku')
+
+                                        };
+                                        if (isEdit) setProducts(curr => curr.map(p => p.id === productData.id ? productData : p));
+                                        else setProducts([productData, ...products]);
+
+                                        setEditingProduct(null);
+                                        setView('inventory');
+                                    }}>
+                                        <div>
+                                            <label class="block text-sm font-medium text-stone-500 mb-1">Nome</label>
+                                            <input name="name" defaultValue={isEdit ? editingProduct.name : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-moriah-brown/50 outline-none" />
+                                        </div>
+                                        <div class="grid grid-cols-1 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">SKU / Barcode</label>
+                                                <input name="sku" defaultValue={isEdit ? editingProduct.sku : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Categoria</label>
+                                                <select name="category" defaultValue={isEdit ? editingProduct.category : 'Café'} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none">
+                                                    <option>Café</option><option>Acessórios</option><option>Bebidas Prontas</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
+                                                <input type="number" step="0.01" name="cost" defaultValue={isEdit ? editingProduct.cost : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Venda (R$)</label>
+                                                <input type="number" step="0.01" name="price" defaultValue={isEdit ? editingProduct.price : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque</label>
+                                                <input type="number" name="stock" defaultValue={isEdit ? editingProduct.stock : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Mínimo</label>
+                                                <input type="number" name="minStock" defaultValue={isEdit ? editingProduct.minStock : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-4 pt-4">
+                                            <button type="button" onClick={() => { setEditingProduct(null); setView('inventory'); }} class="flex-1 py-3 text-stone-500 font-bold hover:bg-stone-50 rounded-2xl transition-all">Cancelar</button>
+                                            <button type="submit" class="flex-1 py-3 bg-moriah-brown text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all">{isEdit ? 'Salvar' : 'Cadastrar'}</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    case 'login': {
+                        return (
+                            <div class="fixed inset-0 bg-stone-50 flex items-center justify-center p-4">
+                                <div class="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden p-10 flex flex-col items-center">
+                                    <img src={logoUrl} class="w-32 h-auto mb-8" />
+                                    <h2 class="text-3xl font-black text-stone-900 mb-2">Bem-vindo de volta</h2>
+                                    <p class="text-stone-400 text-sm mb-8 text-center">Acesse o Moriah PDV para gerenciar suas vendas.</p>
+
+                                    <form class="w-full space-y-4" onSubmit={(e) => {
+                                        e.preventDefault();
+                                        const formData = new FormData(e.target);
+                                        const username = formData.get('username');
+                                        const password = formData.get('password');
+
+                                        const user = users.find(u => u.username === username && u.password === password);
+                                        if (user) setCurrentUser(user);
+                                        else alert('Usuário ou senha incorretos.');
+                                    }}>
+                                        <div>
+                                            <label class="text-[10px] uppercase font-bold text-stone-400 ml-4 mb-1 block">Usuário</label>
+                                            <input name="username" required class="w-full px-6 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" placeholder="admin" />
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] uppercase font-bold text-stone-400 ml-4 mb-1 block">Senha</label>
+                                            <input name="password" type="password" required class="w-full px-6 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" placeholder="••••••••" />
+                                        </div>
+                                        <button type="submit" class="w-full py-5 bg-moriah-brown text-white rounded-2xl font-black text-xl hover:bg-moriah-dark transition-all shadow-xl shadow-stone-200 mt-4">Entrar no Sistema</button>
+                                    </form>
+                                    <div class="mt-8 text-stone-400 text-sm italic">Acesso restrito. Contate o administrador para novos acessos.</div>
+                                </div>
+                            </div>
+                        );
+                    }
+                    case 'settings': {
+                        return (
+                            <div class="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 text-stone-900">
+                                <div class="flex justify-between items-center"><h2 class="text-2xl font-bold">Configurações do Sistema</h2></div>
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    <div class="lg:col-span-1 bg-white p-6 rounded-3xl shadow-sm border border-stone-100 h-fit">
+                                        <h3 class="font-bold mb-4 flex items-center gap-2 text-stone-900"><LucideIcon name="user-plus" className="w-5 h-5 text-moriah-brown" />Novo Usuário</h3>
+                                        <form class="space-y-4" onSubmit={(e) => {
+                                            e.preventDefault();
+                                            const formData = new FormData(e.target);
+                                            const name = formData.get('name');
+                                            const username = formData.get('username');
+                                            const password = formData.get('password');
+                                            if (users.find(u => u.username === username)) { alert('Este usuário já existe.'); return; }
+                                            const newUser = { id: Date.now(), name, username, password };
+                                            setUsers([...users, newUser]);
+                                            e.target.reset();
+                                            alert('Usuário cadastrado com sucesso!');
+                                        }}>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Nome Completo</label><input name="name" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Usuário de Login</label><input name="username" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Senha</label><input name="password" type="password" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <button type="submit" class="w-full py-4 bg-moriah-brown text-white rounded-xl font-bold hover:bg-moriah-dark transition-all mt-2 flex items-center justify-center gap-2 shadow-lg"><LucideIcon name="save" className="w-5 h-5" />Salvar Usuário</button>
+                                        </form>
+                                    </div>
+                                    <div class="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden">
+                                        <div class="px-6 py-4 border-b border-stone-50"><h3 class="font-bold">Usuários Cadastrados</h3></div>
+                                        <table class="w-full text-left">
+                                            <tbody class="divide-y divide-stone-50">
+                                                {users.map(u => (
+                                                    <tr key={u.id}>
+                                                        <td class="px-6 py-4"><p class="font-bold">{u.name || u.username}</p><p class="text-xs text-stone-400">@{u.username}</p></td>
+                                                        <td class="px-6 py-4 text-right">
+                                                            {u.id !== currentUser.id ? (
+                                                                <button onClick={() => { if (confirm('Remover este acesso?')) setUsers(curr => curr.filter(user => user.id !== u.id)); }} class="text-stone-300 hover:text-red-500 transition-colors p-2"><LucideIcon name="user-minus" className="w-4 h-4" /></button>
+                                                            ) : (<span class="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-1 rounded">VOCÊ</span>)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                    case 'customers': {
+                        return (
+                            <div class="space-y-6 animate-in fade-in duration-500 text-stone-900">
+                                <div class="flex justify-between items-center text-stone-900"><h2 class="text-2xl font-bold">Base de Clientes</h2></div>
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    <div class="lg:col-span-1 bg-white p-6 rounded-3xl shadow-sm border border-stone-100 h-fit text-stone-900">
+                                        <h3 class="font-bold mb-4 flex items-center gap-2 text-moriah-brown"><LucideIcon name="user-plus" className="w-5 h-5" />Novo Cliente</h3>
+                                        <form class="space-y-4" onSubmit={(e) => {
+                                            e.preventDefault();
+                                            const formData = new FormData(e.target);
+                                            const newCustomer = { id: Date.now(), name: formData.get('name'), whatsapp: formData.get('whatsapp'), email: formData.get('email'), created: new Date().toISOString() };
+                                            setCustomers([...customers, newCustomer]);
+                                            e.target.reset();
+                                            alert('Cliente cadastrado com sucesso!');
+                                        }}>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Nome Completo</label><input name="name" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">WhatsApp</label><input name="whatsapp" required placeholder="5511999999999" class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">E-mail</label><input name="email" type="email" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <button type="submit" class="w-full py-4 bg-moriah-brown text-white rounded-xl font-bold hover:bg-moriah-dark transition-all mt-2 flex items-center justify-center gap-2 shadow-lg"><LucideIcon name="save" className="w-5 h-5" />Salvar Cliente</button>
+                                        </form>
+                                    </div>
+                                    <div class="lg:col-span-2 space-y-4">
+                                        <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden">
+                                            <div class="px-6 py-4 border-b border-stone-50 bg-stone-50/50 flex justify-between items-center text-stone-900">
+                                                <h3 class="font-bold">Clientes Cadastrados ({customers.length})</h3>
+                                                <div class="relative w-48"><div class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"><LucideIcon name="search" className="w-3 h-3" /></div><input placeholder="Buscar..." class="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-stone-200 rounded-lg outline-none focus:ring-1 focus:ring-moriah-brown/30" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+                                            </div>
+                                            <table class="w-full text-left">
+                                                <thead class="bg-stone-50/50 text-[10px] uppercase font-bold text-stone-400 border-b border-stone-100"><tr><th class="px-6 py-3">Cliente</th><th class="px-6 py-3 text-right">Ações</th></tr></thead>
+                                                <tbody class="divide-y divide-stone-50">
+                                                    {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.whatsapp.includes(searchTerm)).map(c => (
+                                                        <tr key={c.id} class="hover:bg-stone-50 transition-colors">
+                                                            <td class="px-6 py-4"><p class="font-bold">{c.name}</p><div class="flex gap-4 mt-1 text-xs text-stone-400"><span class="flex items-center gap-1"><LucideIcon name="phone" className="w-3 h-3" /> {c.whatsapp}</span><span class="flex items-center gap-1"><LucideIcon name="mail" className="w-3 h-3" /> {c.email}</span></div></td>
+                                                            <td class="px-6 py-4 text-right">
+                                                                <div class="flex justify-end gap-2">
+                                                                    <a href={`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`} target="_blank" class="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="Falar no WhatsApp"><LucideIcon name="message-circle" className="w-4 h-4" /></a>
+                                                                    <button onClick={() => { if (confirm('Excluir este cliente?')) setCustomers(curr => curr.filter(cust => cust.id !== c.id)); }} class="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                    {customers.length === 0 && (<tr><td colspan="2" class="px-6 py-12 text-center text-stone-300 italic">Sua base de clientes está vazia. Comece a cadastrar agora!</td></tr>)}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                }
+            };
+
+            if (!currentUser) return renderView('login');
+
+            const MobileNavItem = ({ icon, label, active, onClick }) => (
+                <button onClick={onClick} class={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${active ? 'text-moriah-brown' : 'text-stone-400 hover:text-stone-600'}`}>
+                    <LucideIcon name={icon} className={`w-5 h-5 ${active ? 'fill-moriah-brown/10' : ''}`} />
+                    <span class="text-[10px] font-bold mt-1 uppercase tracking-tighter">{label}</span>
+                </button>
+            );
+
+            return (
+                <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-stone-50">
+                    <aside class="hidden md:flex w-72 bg-white border-r border-stone-100 flex-col p-6 space-y-8 no-print">
+                        <div class="flex flex-col items-center mb-4"><div class="w-full flex items-center justify-center p-4"><img src={logoUrl} class="w-3/4 h-auto max-h-32 object-contain" /></div></div>
+                        <nav class="flex-1 space-y-2">
+                            <SidebarItem onClick={() => setView('dashboard')} active={view === 'dashboard'} icon="layout-dashboard" label="Dashboard" />
+                            <SidebarItem onClick={() => setView('pos')} active={view === 'pos'} icon="shopping-bag" label="Ponto de Venda" />
+                            <SidebarItem onClick={() => setView('inventory')} active={view === 'inventory'} icon="package" label="Inventário" />
+                            <SidebarItem onClick={() => setView('customers')} active={view === 'customers'} icon="users-round" label="Clientes" />
+                            <SidebarItem onClick={() => setView('sales')} active={view === 'sales'} icon="file-text" label="Relatórios" />
+                            <SidebarItem onClick={() => setView('settings')} active={view === 'settings'} icon="settings" label="Configurações" />
+                        </nav>
+                        <div class="space-y-4">
+                            <div class="p-4 bg-stone-50 rounded-2xl border border-stone-100">
+                                <p class="text-[10px] font-bold text-stone-400 mb-1 uppercase">Logado como</p>
+                                <p class="text-sm font-black text-stone-900 truncate">{currentUser.name || currentUser.username}</p>
+                                <button onClick={() => setCurrentUser(null)} class="text-[10px] text-moriah-brown font-bold mt-2 hover:underline">Sair do Sistema</button>
+                            </div>
+                            <div class="p-4 bg-moriah-brown/5 rounded-2xl border border-moriah-brown/10">
+                                <p class="text-[10px] font-bold text-moriah-brown mb-1 uppercase tracking-wider">Status do Sistema</p>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-stone-600">Operando Localmente</span>
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+                    <header class="md:hidden bg-white border-b border-stone-100 px-4 py-3 flex items-center justify-between no-print">
+                        <img src={logoUrl} class="h-8 w-auto" />
+                        <div class="flex items-center gap-3">
+                            <div class="text-right"><p class="text-[8px] font-bold text-stone-400 uppercase leading-none">Vendedor</p><p class="text-xs font-black text-stone-900 leading-none mt-0.5">{currentUser.username}</p></div>
+                            <button onClick={() => setCurrentUser(null)} class="p-2 bg-stone-50 rounded-lg text-moriah-brown p-2"><LucideIcon name="log-out" className="w-4 h-4" /></button>
+                        </div>
+                    </header>
+                    <main class="flex-1 p-4 md:p-8 overflow-y-auto pb-24 md:pb-8">{renderView()}</main>
+                    <nav class="md:hidden fixed bottom-6 left-6 right-6 h-16 bg-white/90 backdrop-blur-xl rounded-[28px] border border-stone-100 mobile-nav-shadow flex items-center px-4 no-print z-50">
+                        <MobileNavItem onClick={() => setView('dashboard')} active={view === 'dashboard'} icon="layout-dashboard" label="Painel" />
+                        <MobileNavItem onClick={() => setView('pos')} active={view === 'pos'} icon="shopping-bag" label="Venda" />
+                        <MobileNavItem onClick={() => setView('inventory')} active={view === 'inventory'} icon="package" label="Estoque" />
+                        <MobileNavItem onClick={() => setView('customers')} active={view === 'customers'} icon="users-round" label="Clientes" />
+                        <MobileNavItem onClick={() => setView('sales')} active={view === 'sales' || view === 'settings'} icon="more-horizontal" label="Mais" />
+                    </nav>
+                </div>
+            );
+        };
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
