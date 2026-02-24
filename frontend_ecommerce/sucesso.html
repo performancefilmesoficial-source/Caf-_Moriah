@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pedido Confirmado | Moriah Café Especial</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        moriah: {
+                            brown: '#38220f',
+                            sand: '#ecdcc2',
+                            gold: '#d4af37',
+                            black: '#1f1b18',
+                            bg: '#faf8f5',
+                            green: '#123930',
+                            orange: '#f26e3d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-moriah-bg text-moriah-black font-sans min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div
+        class="bg-white max-w-lg w-full rounded-3xl shadow-2xl p-8 md:p-12 text-center relative overflow-hidden border border-stone-100">
+
+        <!-- Fundo sutil com padronagem de grãos apenas na caixinha -->
+        <div class="absolute inset-0 opacity-[0.03] z-0 pointer-events-none"
+            style="background-image: url('bg_beans.png'); background-size: 200px;"></div>
+
+        <div class="relative z-10 flex flex-col items-center">
+
+            <img src="logo.png" alt="Moriah Café" class="h-10 mb-10 mx-auto" />
+
+            <div
+                class="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                <i data-lucide="check" class="w-10 h-10"></i>
+            </div>
+
+            <h1 class="text-3xl md:text-4xl font-bold text-moriah-green mb-4">Obrigado pelo seu pedido!</h1>
+
+            <p class="text-stone-500 mb-8 leading-relaxed">
+                Separamos seus grãos torrados com maestria. Seu pedido foi confirmado e em breve você receberá um
+                <strong>e-mail com o código de rastreio</strong> e a nota fiscal.
+            </p>
+
+            <div class="bg-stone-50 rounded-2xl p-6 w-full text-left mb-8 border border-stone-100">
+                <div class="flex items-center gap-3 mb-2 text-stone-600">
+                    <i data-lucide="package" class="w-5 h-5 text-moriah-orange"></i>
+                    <span class="font-medium text-sm">Status: Preparando Envio</span>
+                </div>
+            </div>
+
+            <a href="index.html"
+                class="w-full bg-moriah-gold text-moriah-black font-semibold py-4 rounded-xl shadow-md hover:shadow-lg transition flex justify-center items-center gap-2">
+                Voltar para a Loja <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </a>
+
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+
+</html>

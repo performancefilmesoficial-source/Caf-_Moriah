@@ -157,10 +157,22 @@
 
         const App = () => {
             const [view, setView] = useState('pos');
-            const [products, setProducts] = useState(() => {
-                const saved = localStorage.getItem('moriah_products');
-                return saved ? JSON.parse(saved) : initialProducts;
-            });
+            const [products, setProducts] = useState([]);
+            // Carrega produtos da API no Mount
+            useEffect(() => {
+                const fetchProducts = async () => {
+                    try {
+                        const res = await fetch('http://localhost:3000/api/products');
+                        if (res.ok) {
+                            const data = await res.json();
+                            setProducts(data);
+                        }
+                    } catch (err) {
+                        console.error("Erro ao carregar produtos:", err);
+                    }
+                };
+                fetchProducts();
+            }, []);
             const [sales, setSales] = useState(() => {
                 const saved = localStorage.getItem('moriah_sales');
                 return saved ? JSON.parse(saved) : [];
@@ -199,7 +211,10 @@
 
 
 
-            useEffect(() => { localStorage.setItem('moriah_products', JSON.stringify(products)); }, [products]);
+            useEffect(() => {
+                if (currentUser) localStorage.setItem('moriah_current_user', JSON.stringify(currentUser));
+                else localStorage.removeItem('moriah_current_user');
+            }, [currentUser]);
             useEffect(() => { localStorage.setItem('moriah_sales', JSON.stringify(sales)); }, [sales]);
             useEffect(() => { localStorage.setItem('moriah_users', JSON.stringify(users)); }, [users]);
             useEffect(() => {
@@ -314,9 +329,17 @@
                 setView('pos');
             };
 
-            const deleteProduct = (id) => {
+            const deleteProduct = async (id) => {
                 if (confirm('Tem certeza que deseja excluir este produto?')) {
-                    setProducts(curr => curr.filter(p => p.id !== id));
+                    try {
+                        const res = await fetch(`http://localhost:3000/api/products/${id}`, { method: 'DELETE' });
+                        if (res.ok) {
+                            setProducts(curr => curr.filter(p => p.id !== id));
+                        }
+                    } catch (error) {
+                        console.error('Erro ao excluir:', error);
+                        alert('Erro ao excluir produto.');
+                    }
                 }
             };
             const renderView = (overrideView) => {
@@ -528,9 +551,39 @@
                         <div class="space-y-6 animate-in fade-in duration-500">
                             <div class="flex justify-between items-center text-stone-900">
                                 <h2 class="text-2xl font-bold">Gestão de Inventário</h2>
-                                <button onClick={() => { setView('add_product'); }} class="flex items-center gap-2 bg-moriah-teal text-white px-6 py-2 rounded-xl hover:bg-teal-900 transition-all">
-                                    <LucideIcon name="plus" className="w-4 h-4" />Novo Produto
-                                </button>
+                                <div class="flex items-center gap-3">
+                                    <label class="cursor-pointer bg-stone-100 text-stone-600 px-4 py-2 rounded-xl hover:bg-stone-200 transition-all font-bold text-sm flex items-center gap-2 shadow-sm border border-stone-200">
+                                        <LucideIcon name="download-cloud" className="w-4 h-4 text-moriah-orange" /> Nuvemshop (CSV)
+                                        <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
+                                            const file = e.target.files[0];
+                                            if (!file) return;
+
+                                            const formData = new FormData();
+                                            formData.append('file', file);
+
+                                            // Loading states could be added here
+                                            alert('Importando produtos, aguarde...');
+                                            try {
+                                                const res = await fetch('http://localhost:3000/api/products/import', { method: 'POST', body: formData });
+                                                const data = await res.json();
+
+                                                alert(data.message || data.error || 'Erro desconhecido');
+
+                                                if (res.ok) {
+                                                    // Atualiza a tabela chamando a API de produtos novamente
+                                                    const reload = await fetch('http://localhost:3000/api/products');
+                                                    setProducts(await reload.json());
+                                                }
+                                            } catch (err) {
+                                                console.error(err);
+                                                alert('Falha na comunicação com o servidor.');
+                                            }
+                                        }} />
+                                    </label>
+                                    <button onClick={() => { setView('add_product'); }} class="flex items-center gap-2 bg-moriah-teal text-white px-6 py-2 rounded-xl hover:bg-teal-900 transition-all shadow-md">
+                                        <LucideIcon name="plus" className="w-4 h-4" />Novo Produto
+                                    </button>
+                                </div>
                             </div>
                             <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden">
                                 <div class="overflow-x-auto">
@@ -633,25 +686,54 @@
                                 <div class="grid grid-cols-1 gap-8">
 
 
-                                    <form class="space-y-4" onSubmit={(e) => {
+                                    <form class="space-y-4" onSubmit={async (e) => {
                                         e.preventDefault();
                                         const formData = new FormData(e.target);
                                         const productData = {
-                                            id: isEdit ? editingProduct.id : Date.now(),
                                             name: formData.get('name'),
                                             category: formData.get('category'),
                                             cost: parseFloat(formData.get('cost')),
                                             price: parseFloat(formData.get('price')),
                                             stock: parseInt(formData.get('stock')),
                                             minStock: parseInt(formData.get('minStock')),
-                                            sku: formData.get('sku')
-
+                                            sku: formData.get('sku'),
+                                            image_url: formData.get('image_url') || '',
+                                            description: formData.get('description'),
+                                            weight_grams: parseInt(formData.get('weight_grams')) || 250,
+                                            sell_online: formData.get('sell_online') === 'on' ? 1 : 0
                                         };
-                                        if (isEdit) setProducts(curr => curr.map(p => p.id === productData.id ? productData : p));
-                                        else setProducts([productData, ...products]);
 
-                                        setEditingProduct(null);
-                                        setView('inventory');
+                                        try {
+                                            let res;
+                                            if (isEdit) {
+                                                res = await fetch(`http://localhost:3000/api/products/${editingProduct.id}`, {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify(productData)
+                                                });
+                                            } else {
+                                                res = await fetch('http://localhost:3000/api/products', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify(productData)
+                                                });
+                                            }
+
+                                            if (res.ok) {
+                                                // Recarrega todos os produtos do DB
+                                                const reload = await fetch('http://localhost:3000/api/products');
+                                                const newData = await reload.json();
+                                                setProducts(newData);
+
+                                                setEditingProduct(null);
+                                                setView('inventory');
+                                            } else {
+                                                alert("Erro ao salvar o produto.");
+                                            }
+                                        } catch (error) {
+                                            console.error("Erro no processamento:", error);
+                                            alert("Erro de conexão com o servidor.");
+                                        }
                                     }}>
                                         <div>
                                             <label class="block text-sm font-medium text-stone-500 mb-1">Nome</label>
@@ -665,9 +747,19 @@
                                             <div>
                                                 <label class="block text-sm font-medium text-stone-500 mb-1">Categoria</label>
                                                 <select name="category" defaultValue={isEdit ? editingProduct.category : 'Café'} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none">
-                                                    <option>Café</option><option>Acessórios</option><option>Bebidas Prontas</option>
+                                                    <option>Café Grão</option>
+                                                    <option>Café Moído</option>
+                                                    <option>Acessórios</option>
                                                 </select>
                                             </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-stone-500 mb-1">URL da Imagem</label>
+                                            <input name="image_url" placeholder="https://exemplo.com/foto.jpg" defaultValue={isEdit ? editingProduct.image_url : ''} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-stone-500 mb-1">Descrição do Produto (Site)</label>
+                                            <textarea name="description" rows="3" class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-moriah-brown/50 outline-none">{isEdit ? editingProduct.description : ''}</textarea>
                                         </div>
                                         <div class="grid grid-cols-2 gap-4">
                                             <div>
@@ -681,12 +773,24 @@
                                         </div>
                                         <div class="grid grid-cols-2 gap-4">
                                             <div>
-                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque</label>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Físico</label>
                                                 <input type="number" name="stock" defaultValue={isEdit ? editingProduct.stock : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
                                             </div>
                                             <div>
-                                                <label class="block text-sm font-medium text-stone-500 mb-1">Mínimo</label>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Min.</label>
                                                 <input type="number" name="minStock" defaultValue={isEdit ? editingProduct.minStock : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Peso (Gramas)</label>
+                                                <input type="number" name="weight_grams" placeholder="Ex: 250" defaultValue={isEdit ? editingProduct.weight_grams : '250'} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                            </div>
+                                            <div class="flex items-center mt-4">
+                                                <label class="flex items-center gap-2 cursor-pointer">
+                                                    <input type="checkbox" name="sell_online" defaultChecked={isEdit ? editingProduct.sell_online == 1 : true} class="w-5 h-5 text-moriah-brown bg-stone-100 border-stone-300 rounded focus:ring-moriah-brown" />
+                                                    <span class="text-sm font-bold text-stone-700">Vender no E-commerce?</span>
+                                                </label>
                                             </div>
                                         </div>
                                         <div class="flex gap-4 pt-4">

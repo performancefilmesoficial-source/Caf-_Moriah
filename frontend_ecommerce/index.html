@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moriah Café - Especial & Luxuoso</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        moriah: {
+                            brown: '#38220f',    // Marrom Profundo
+                            sand: '#ecdcc2',     // Bege Areia
+                            gold: '#d4af37',     // Dourado CTA
+                            black: '#1f1b18',    // Preto Fosco
+                            bg: '#faf8f5',       // Fundo Clean
+                            green: '#123930',    // Verde Profundo da Logo
+                            orange: '#f26e3d',   // Laranja do Ícone 04.png
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Inter"', 'sans-serif'],
+                    },
+                    boxShadow: {
+                        'soft': '0 10px 40px -10px rgba(56,34,15,0.08)',
+                        'gold': '0 4px 14px 0 rgba(212,175,55,0.39)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #faf8f5;
+            color: #1f1b18;
+        }
+
+
+
+        /* Mobile Bottom Nav Shadows */
+        .mobile-nav-shadow {
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root">
+        <div class="flex items-center justify-center h-screen bg-[#faf8f5]">
+            <div class="text-center">
+                <div
+                    class="w-12 h-12 border-4 border-[#38220f] border-t-transparent rounded-full animate-spin mx-auto mb-4">
+                </div>
+                <p class="text-[#d4af37] font-sans italic text-xl animate-pulse">Preparando seu café...</p>
+            </div>
+        </div>
+    </div>
+    <script type="text/babel">
+        function App() {
+            const [cart, setCart] = React.useState([]);
+            const [isCartOpen, setIsCartOpen] = React.useState(false);
+            const [shippingCep, setShippingCep] = React.useState('');
+            const [shippingCost, setShippingCost] = React.useState(0);
+            const [isCheckingOut, setIsCheckingOut] = React.useState(false);
+
+            const addToCart = (product, grind = null) => {
+                setCart(prev => {
+                    const existing = prev.find(item => item.id === product.id && item.grind === grind);
+                    if (existing) {
+                        return prev.map(item => item.id === product.id && item.grind === grind ? { ...item, quantity: item.quantity + 1 } : item);
+                    }
+                    return [...prev, { ...product, quantity: 1, grind }];
+                });
+                setIsCartOpen(true);
+            };
+
+            const removeFromCart = (productId, grind = null) => {
+                setCart(prev => prev.filter(item => !(item.id === productId && item.grind === grind)));
+                // Se o carrinho esvaziar, zera frete
+                if (cart.length === 1) setShippingCost(0);
+            };
+
+            const updateQuantity = (productId, grind, amount) => {
+                setCart(prev => prev.map(item => {
+                    if (item.id === productId && item.grind === grind) {
+                        const newQ = item.quantity + amount;
+                        return newQ > 0 ? { ...item, quantity: newQ } : item;
+                    }
+                    return item;
+                }));
+            };
+
+            const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+            const finalTotal = cartTotal + shippingCost;
+
+            const handleCalculateShipping = (e) => {
+                e.preventDefault();
+                // Simulação de frete
+                if (shippingCep.length >= 8) {
+                    setShippingCost(25.90); // Frete fixo mockado de exemplo
+                }
+            };
+
+            // Wrapper seguro para renderizar ícones Lucide no React
+            const LucideIcon = ({ name, className }) => {
+                const spanRef = React.useRef(null);
+                React.useEffect(() => {
+                    if (spanRef.current) {
+                        spanRef.current.innerHTML = `<i data-lucide="${name}" class="${className || ''}"></i>`;
+                        lucide.createIcons({ root: spanRef.current });
+                    }
+                }, [name, className]);
+                return <span ref={spanRef} style={{ display: 'contents' }}></span>;
+            };
+
+
+            const [cafes, setCafes] = React.useState([]);
+            const [acessorios, setAcessorios] = React.useState([]);
+            const [isLoading, setIsLoading] = React.useState(true);
+
+            React.useEffect(() => {
+                const fetchProducts = async () => {
+                    try {
+                        const res = await fetch('http://localhost:3000/api/products/online');
+                        const data = await res.json();
+
+                        // Separa Bebidas/Grãos de Acessórios
+                        const cafeItems = data.filter(p => p.category.toLowerCase().includes('café'));
+                        const accItems = data.filter(p => !p.category.toLowerCase().includes('café'));
+
+                        setCafes(cafeItems);
+                        setAcessorios(accItems);
+                    } catch (error) {
+                        console.error("Erro ao carregar a vitrine:", error);
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+                fetchProducts();
+            }, []);
+
+            const Header = () => (
+                <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-moriah-sand border-opacity-50">
+                    <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+                        <div className="flex items-center">
+                            <img src="logo.png" alt="Moriah Café Especial" className="h-10 md:h-12 object-contain" />
+                        </div>
+                        <div className="hidden md:flex gap-8 text-sm font-medium">
+                            <a href="#" className="hover:text-moriah-gold transition-colors">Cafés</a>
+                            <a href="#" className="hover:text-moriah-gold transition-colors">Acessórios</a>
+                            <a href="#" className="hover:text-moriah-gold transition-colors">Kits Presente</a>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <button className="p-2 hover:bg-moriah-sand/20 rounded-full transition"><LucideIcon name="search" className="w-5 h-5" /></button>
+                            <button className="p-2 hover:bg-moriah-sand/20 rounded-full transition relative" onClick={() => setIsCartOpen(true)}>
+                                <LucideIcon name="shopping-bag" className="w-5 h-5" />
+                                {cart.length > 0 && <span className="absolute top-0 right-0 bg-moriah-gold text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{cart.reduce((a, b) => a + b.quantity, 0)}</span>}
+                            </button>
+                            <button className="hidden md:block p-2 hover:bg-moriah-sand/20 rounded-full transition"><LucideIcon name="user" className="w-5 h-5" /></button>
+                        </div>
+                    </div>
+                </header>
+            );
+
+            const Hero = () => (
+                <section className="relative bg-moriah-black text-white overflow-hidden flex items-center justify-center min-h-[50vh] md:min-h-[60vh] py-16 md:py-20">
+                    <div className="absolute inset-0 z-0">
+                        <video
+                            className="w-full h-full object-cover opacity-60 mix-blend-overlay"
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            poster="https://images.unsplash.com/photo-1498804103079-a6351b050096?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80"
+                        >
+                            {/* Exemplo de vídeo placeholder - em produção será o link da CDN VPS */}
+                            <source src="https://cdn.pixabay.com/video/2016/06/17/3494-171876527_large.mp4" type="video/mp4" />
+                            Seu navegador não suporta vídeos.
+                        </video>
+                        <div className="absolute inset-0 bg-gradient-to-t from-moriah-black via-moriah-black/60 to-transparent"></div>
+                    </div>
+
+                    <div className="relative z-10 text-center max-w-4xl mx-auto mt-6 md:mt-10 px-4">
+                        <span className="text-moriah-gold text-xs md:text-sm tracking-[0.2em] uppercase font-semibold mb-4 block drop-shadow-md">Experiência Sensorial</span>
+                        <h1 className="font-sans text-5xl md:text-7xl mb-6 font-bold leading-tight drop-shadow-xl">O Café dos <br /><span className="text-moriah-sand italic font-light drop-shadow-xl">Seus Sonhos</span></h1>
+                        <p className="text-stone-300 md:text-lg font-light max-w-2xl mx-auto mb-8 drop-shadow-lg leading-relaxed">
+                            Grãos selecionados das melhores origens do Brasil, torrados artesanalmente para despertar todos os seus sentidos.
+                        </p>
+
+                        <button className="bg-moriah-gold text-moriah-black font-semibold px-8 py-4 rounded-full shadow-gold hover:-translate-y-1 transition transform duration-300 flex items-center mx-auto gap-3 text-base hover:shadow-xl">
+                            Explorar Cafés Especiais <LucideIcon name="arrow-right" className="w-5 h-5" />
+                        </button>
+                    </div>
+                </section>
+            );
+
+            const ProductCard = ({ product }) => {
+                const [grind, setGrind] = React.useState('grao');
+
+
+                const isCoffee = product.category.toLowerCase().includes('grão') || product.name.toLowerCase().includes('café');
+
+                return (
+                    <div className="group bg-white rounded-3xl overflow-hidden shadow-soft flex flex-col h-full border border-stone-100 relative">
+                        <div className="relative aspect-[4/3] overflow-hidden bg-stone-50">
+                            <img src={product.image_url || 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80'} className="w-full h-full object-cover group-hover:scale-105 transition duration-700" alt={product.name} />
+                        </div>
+                        <div className="p-6 flex flex-col flex-1">
+                            <span className="text-[10px] text-stone-400 mb-2 font-bold uppercase tracking-wider">{product.category}</span>
+                            <h3 className="font-sans text-xl font-bold text-moriah-green mb-2 leading-tight">{product.name}</h3>
+                            {product.description && <p className="text-sm text-stone-500 line-clamp-2 mb-4 h-10">{product.description}</p>}
+
+                            {isCoffee && (
+                                <div className="mt-auto mb-6 bg-stone-50 rounded-2xl p-4 border border-stone-100">
+                                    <div className="flex items-center gap-6">
+                                        <label className="flex items-center gap-2 cursor-pointer group/label">
+                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${grind === 'grao' ? 'border-moriah-orange' : 'border-stone-300 group-hover/label:border-moriah-orange'}`}>
+                                                {grind === 'grao' && <div className="w-2.5 h-2.5 bg-moriah-orange rounded-full"></div>}
+                                            </div>
+                                            <span className="text-sm font-medium text-stone-600">Grão</span>
+                                            <input type="radio" name={`grind-${product.id}`} value="grao" className="hidden" onChange={() => setGrind('grao')} checked={grind === 'grao'} />
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer group/label">
+                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${grind === 'moido' ? 'border-moriah-orange' : 'border-stone-300 group-hover/label:border-moriah-orange'}`}>
+                                                {grind === 'moido' && <div className="w-2.5 h-2.5 bg-moriah-orange rounded-full"></div>}
+                                            </div>
+                                            <span className="text-sm font-medium text-stone-600">Moído</span>
+                                            <input type="radio" name={`grind-${product.id}`} value="moido" className="hidden" onChange={() => setGrind('moido')} checked={grind === 'moido'} />
+                                        </label>
+                                    </div>
+
+                                </div>
+                            )}
+
+                            <div className={`mt-${isCoffee ? '0' : 'auto'} pt-4 flex items-center justify-between border-t border-stone-100`}>
+                                <span className="text-2xl font-bold text-moriah-brown">R$ {product.price.toFixed(2).replace('.', ',')}</span>
+                                <button
+                                    onClick={() => addToCart(product, isCoffee ? grind : null)}
+                                    className="w-12 h-12 rounded-xl bg-moriah-orange/10 text-moriah-orange hover:bg-moriah-orange hover:text-white flex items-center justify-center transition-colors"
+                                >
+                                    <LucideIcon name="shopping-bag" className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const Testimonials = () => (
+                <section className="bg-moriah-sand/10 py-20 px-4">
+                    <div className="max-w-7xl mx-auto">
+                        <div className="text-center mb-16">
+                            <h2 className="font-sans text-3xl md:text-5xl font-bold text-moriah-brown mb-4">A excelência na xícara</h2>
+                            <p className="text-stone-500 max-w-xl mx-auto font-light">Depoimentos reais de quem não abre mão do melhor sabor todas as manhãs.</p>
+                        </div>
+                        <div className="grid md:grid-cols-3 gap-8">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="bg-white p-8 rounded-[2rem] shadow-soft relative">
+                                    <div className="absolute top-6 right-6 text-moriah-gold opacity-20"><LucideIcon name="quote" className="w-12 h-12" /></div>
+                                    <div className="flex text-moriah-gold mb-4">
+                                        {[1, 2, 3, 4, 5].map(star => <LucideIcon key={star} name="star" className="w-4 h-4 fill-current" />)}
+                                    </div>
+                                    <p className="text-stone-600 font-sans italic mb-6 leading-relaxed">"O melhor café que já provei! O aroma que fica na casa de manhã é indescritível e a apresentação é um verdadeiro luxo. Sou assinante fiel."</p>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-stone-200 rounded-full overflow-hidden">
+                                            <img src={`https://i.pravatar.cc/150?img=${i + 10}`} />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-sm text-moriah-black">Cliente Premium {i}</p>
+                                            <p className="text-[10px] text-stone-400 uppercase tracking-wider">Comprador Verificado</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+            );
+
+            const Footer = () => (
+                <footer className="bg-moriah-black text-white pt-20 pb-24 md:pb-10 px-4">
+                    <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
+                        <div className="md:col-span-1">
+                            <div className="flex items-center gap-2 mb-6">
+                                <img src="logo.png" alt="Moriah" className="h-10 object-contain invert brightness-0" />
+                            </div>
+                            <p className="text-stone-400 text-sm font-light leading-relaxed mb-6">A arte do café especial levada à sério. Da fazenda até a sua xícara, prezamos pela excelência e experiência única para os paladares mais exigentes.</p>
+                            <div className="flex gap-4">
+                                <a href="#" className="text-stone-400 hover:text-moriah-gold transition"><LucideIcon name="instagram" className="w-5 h-5" /></a>
+                                <a href="#" className="text-stone-400 hover:text-moriah-gold transition"><LucideIcon name="facebook" className="w-5 h-5" /></a>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 className="font-sans text-lg font-bold mb-6 text-white tracking-wide">Nossa Loja</h4>
+                            <ul className="space-y-4 text-sm text-stone-400 font-light">
+                                <li><a href="#" className="hover:text-moriah-gold transition">Cafés Especiais</a></li>
+                                <li><a href="#" className="hover:text-moriah-gold transition">Métodos e Acessórios</a></li>
+                                <li><a href="#" className="hover:text-moriah-gold transition">Clube de Assinatura</a></li>
+                                <li><a href="#" className="hover:text-moriah-gold transition">Para Empresas</a></li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 className="font-sans text-lg font-bold mb-6 text-white tracking-wide">Ajuda & Contato</h4>
+                            <ul className="space-y-4 text-sm text-stone-400 font-light">
+                                <li><a href="#" className="hover:text-moriah-gold transition">Rastrear Pedido</a></li>
+                                <li><a href="#" className="hover:text-moriah-gold transition underline">Política de Trocas e Devoluções</a></li>
+                                <li><a href="#" className="hover:text-moriah-gold transition">Dúvidas Frequentes</a></li>
+                                <li><a href="#" className="hover:text-moriah-gold transition flex items-center gap-2"><LucideIcon name="smartphone" className="w-4 h-4" /> (11) 99999-9999</a></li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 className="font-sans text-lg font-bold mb-6 text-white tracking-wide">Pagamento Seguros & Envios</h4>
+                            <div className="flex gap-2 items-center mb-4 opacity-70">
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/Visa_Logo.png" className="h-5 bg-white px-1.5 py-0.5 rounded-sm object-contain" alt="Visa" />
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/MasterCard_Logo.svg" className="h-5 bg-white px-1.5 py-0.5 rounded-sm object-contain" alt="MasterCard" />
+                                <img src="https://upload.wikimedia.org/wikipedia/commons/a/a2/Logotipo_do_Pix.svg" className="h-5 bg-white px-1.5 py-0.5 rounded-sm object-contain" alt="Pix" />
+                            </div>
+
+                            <div className="flex gap-2 items-center opacity-70">
+                                <img src="https://logospng.org/download/correios/logo-correios-512.png" className="h-5 bg-white px-1.5 py-0.5 rounded-sm object-contain" alt="Correios" />
+                            </div>
+
+                            <div className="mt-6 flex items-center gap-2 text-stone-400 text-xs font-light">
+                                <LucideIcon name="shield-check" className="w-4 h-4 text-emerald-500" /> Transação Criptografada (3D Secure via Gateway)
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Linha Legal e CNPJ */}
+                    <div className="max-w-7xl mx-auto pt-8 mt-12 border-t border-white/10 flex flex-col md:flex-row items-center justify-between text-xs text-stone-500 font-light gap-4">
+                        <div className="text-center md:text-left">
+                            <p className="mb-1 uppercase tracking-widest text-stone-400">&copy; {new Date().getFullYear()} Moriah Café. Todos os direitos reservados.</p>
+                            <p>MORIAH CAFE LTDA - CNPJ: 00.000.000/0001-00</p>
+                            <p>Rua Exemplo de Torrefação, 123 - Centro, São Paulo/SP</p>
+                        </div>
+                        <div className="flex gap-4">
+                            <a href="#" className="hover:text-white transition">Termos de Serviço</a>
+                            <a href="#" className="hover:text-white transition">Política de Privacidade</a>
+                        </div>
+                    </div>
+                </footer>
+            );
+
+            const MobileNav = () => (
+                <nav className="md:hidden fixed bottom-6 left-6 right-6 h-16 bg-moriah-black/95 backdrop-blur-xl rounded-[28px] border border-white/10 mobile-nav-shadow flex items-center px-4 z-50">
+                    <button className="flex flex-col items-center justify-center flex-1 py-2 transition-all text-moriah-gold">
+                        <LucideIcon name="home" className="w-5 h-5 mb-1" />
+                        <span className="text-[9px] font-bold uppercase tracking-wider">Início</span>
+                    </button>
+                    <button className="flex flex-col items-center justify-center flex-1 py-2 transition-all text-stone-400 hover:text-white">
+                        <LucideIcon name="columns" className="w-5 h-5 mb-1" />
+                        <span className="text-[9px] font-bold uppercase tracking-wider">Categorias</span>
+                    </button>
+                    <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center justify-center flex-1 py-2 transition-all text-stone-400 relative hover:text-white">
+                        <LucideIcon name="shopping-bag" className="w-5 h-5 mb-1" />
+                        {cart.length > 0 && <span className="absolute top-1 right-2 bg-moriah-gold text-white text-[9px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">{cart.reduce((a, b) => a + b.quantity, 0)}</span>}
+                        <span className="text-[9px] font-bold uppercase tracking-wider">Carrinho</span>
+                    </button>
+                    <button className="flex flex-col items-center justify-center flex-1 py-2 transition-all text-stone-400 hover:text-white">
+                        <LucideIcon name="user" className="w-5 h-5 mb-1" />
+                        <span className="text-[9px] font-bold uppercase tracking-wider">Perfil</span>
+                        ```html
+                    </button>
+                </nav>
+            );
+
+            const Main = () => (
+                <main className="flex-1">
+                    <Hero />
+                    <section className="bg-moriah-bg py-24 px-4" id="produtos">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="text-center mb-16 relative">
+                                <span className="text-moriah-orange text-sm tracking-[0.2em] uppercase font-bold mb-4 block">Nossa Seleção</span>
+                                <h2 className="font-sans text-4xl md:text-5xl font-bold text-moriah-green mb-6 relative z-10 transition-colors duration-500">
+                                    Cafés Especiais
+                                </h2>
+                                <p className="text-stone-500 max-w-2xl mx-auto font-light leading-relaxed">
+                                    Conheça nossos grãos classificados acima de 84 pontos na escala SCA. Torrados semanalmente para garantir o máximo de frescor e sabor.
+                                </p>
+                            </div>
+
+                            {isLoading ? (
+                                <div className="flex justify-center py-12">
+                                    <div className="w-10 h-10 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>
+                                </div>
+                            ) : cafes.length === 0 ? (
+                                <div className="text-center py-12 text-stone-400 italic">No momento, nosso mestre de torra está preparando os lotes. Volte logo!</div>
+                            ) : (
+                                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                    {cafes.map(product => (
+                                        <ProductCard key={product.id} product={product} />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+
+                    <section className="bg-stone-50 border-t border-stone-100 py-24 px-4">
+                        <div className="max-w-7xl mx-auto">
+                            <div className="text-center mb-16">
+                                <span className="text-moriah-gold text-sm tracking-[0.2em] uppercase font-bold mb-4 block">Para extrações perfeitas</span>
+                                <h2 className="font-sans text-4xl font-bold text-moriah-brown mb-6">Equipamentos & Acessórios</h2>
+                                <p className="text-stone-500 max-w-2xl mx-auto font-light leading-relaxed">Tudo que você precisa para preparar e servir o café especial perfeito na sua casa.</p>
+                            </div>
+
+                            {isLoading ? (
+                                <div className="flex justify-center py-12">
+                                    <div className="w-10 h-10 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>
+                                </div>
+                            ) : acessorios.length === 0 ? (
+                                <div className="text-center py-12 text-stone-400 italic">Sem acessórios disponíveis no momento.</div>
+                            ) : (
+                                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                    {acessorios.map(product => (
+                                        <ProductCard key={product.id} product={product} />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                    <Testimonials />
+                </main>
+            );
+
+            const CartDrawer = () => (
+                <div className={`fixed inset-0 z-[100] transition-opacity duration-300 ${isCartOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+                    {/* Backdrop */}
+                    <div className="absolute inset-0 bg-moriah-black/60 backdrop-blur-sm" onClick={() => setIsCartOpen(false)}></div>
+
+                    {/* Drawer */}
+                    <div className={`absolute top-0 right-0 h-full w-full md:w-[450px] bg-white shadow-2xl transform transition-transform duration-500 ease-out flex flex-col ${isCartOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-stone-100 bg-white">
+                            <h2 className="font-sans text-2xl font-bold text-moriah-green flex items-center gap-2">
+                                <LucideIcon name="shopping-bag" className="w-6 h-6 text-moriah-gold" />
+                                Seu Carrinho
+                            </h2>
+                            <button onClick={() => setIsCartOpen(false)} className="p-2 hover:bg-stone-100 rounded-full transition-colors text-stone-500">
+                                <LucideIcon name="x" className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {/* Items */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-stone-50/50">
+                            {cart.length === 0 ? (
+                                <div className="text-center text-stone-500 py-12 flex flex-col items-center">
+                                    <LucideIcon name="shopping-cart" className="w-16 h-16 text-stone-200 mb-4" />
+                                    <p>Seu carrinho está vazio.</p>
+                                    <button onClick={() => setIsCartOpen(false)} className="text-moriah-orange font-bold mt-4 underline underline-offset-4">Continuar explorando</button>
+                                </div>
+                            ) : (
+                                cart.map((item, idx) => (
+                                    <div key={`${item.id}-${item.grind}-${idx}`} className="flex gap-4 p-4 bg-white rounded-2xl border border-stone-100 relative group shadow-sm hover:shadow-md transition-shadow">
+                                        <div className="w-20 h-20 bg-stone-50 rounded-xl overflow-hidden flex-shrink-0 relative">
+                                            <img src={item.image_url || 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?ixlib=rb-4.0.3&auto=format&fit=crop&w=150&q=80'} className="w-full h-full object-cover" alt={item.name} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <h4 className="font-bold text-moriah-green leading-tight pr-8">{item.name}</h4>
+                                            {item.grind && <p className="text-[11px] text-stone-500 mt-1 uppercase font-bold tracking-wider">Moagem: {item.grind}</p>}
+                                            <div className="text-moriah-brown font-bold mt-2">R$ {item.price.toFixed(2).replace('.', ',')}</div>
+
+                                            <div className="flex items-center gap-3 mt-3">
+                                                <div className="flex items-center bg-stone-50 border border-stone-200 rounded-lg">
+                                                    <button onClick={() => updateQuantity(item.id, item.grind, -1)} className="px-2.5 py-1 text-stone-500 hover:text-moriah-orange transition hover:bg-white rounded-l-lg">-</button>
+                                                    <span className="w-8 text-center text-sm font-bold text-moriah-black">{item.quantity}</span>
+                                                    <button onClick={() => updateQuantity(item.id, item.grind, 1)} className="px-2.5 py-1 text-stone-500 hover:text-moriah-orange transition hover:bg-white rounded-r-lg">+</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => removeFromCart(item.id, item.grind)} className="absolute top-4 right-4 text-stone-300 hover:text-red-500 transition-colors p-2 bg-stone-50 rounded-full hover:bg-red-50">
+                                            <LucideIcon name="trash-2" className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Footer & Checkout */}
+                        {cart.length > 0 && (
+                            <div className="border-t border-stone-200 bg-white">
+                                {/* Frete */}
+                                <div className="p-6 border-b border-stone-100 bg-stone-50/50">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-3 flex items-center gap-2"><LucideIcon name="truck" className="w-4 h-4" /> Simular Frete</p>
+                                    <form onSubmit={handleCalculateShipping} className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            placeholder="CEP (00000-000)"
+                                            value={shippingCep}
+                                            onChange={(e) => setShippingCep(e.target.value)}
+                                            className="flex-1 px-4 py-2 bg-white border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-moriah-gold transition-colors"
+                                            maxLength="9"
+                                        />
+                                        <button type="submit" className="px-4 py-2 bg-stone-200 text-stone-600 rounded-xl text-sm font-bold hover:bg-stone-300 transition-colors">OK</button>
+                                    </form>
+                                </div>
+
+                                {/* Totais */}
+                                <div className="p-6 pt-4 space-y-3">
+                                    <div className="flex justify-between text-stone-500 text-sm">
+                                        <span>Subtotal</span>
+                                        <span>R$ {cartTotal.toFixed(2).replace('.', ',')}</span>
+                                    </div>
+                                    <div className="flex justify-between text-stone-500 text-sm">
+                                        <span>Frete</span>
+                                        <span className={shippingCost === 0 ? "text-stone-400 italic" : "text-moriah-green"}>
+                                            {shippingCost === 0 ? "A calcular" : `+ R$ ${shippingCost.toFixed(2).replace('.', ',')}`}
+                                        </span>
+                                    </div>
+                                    <div className="pt-3 border-t border-stone-200 flex justify-between items-center mb-6">
+                                        <span className="font-bold text-moriah-green text-lg">Total</span>
+                                        <span className="font-bold text-2xl text-moriah-brown">R$ {finalTotal.toFixed(2).replace('.', ',')}</span>
+                                    </div>
+
+                                    <button
+                                        onClick={() => { setIsCartOpen(false); setIsCheckingOut(true); }}
+                                        className="w-full bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg shadow-moriah-green/20 hover:-translate-y-1 hover:shadow-xl hover:bg-emerald-900 transition-all duration-300 flex items-center justify-center gap-2"
+                                    >
+                                        Ir para Pagamento Segurto <LucideIcon name="lock" className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+
+            const CheckoutModal = () => {
+                if (!isCheckingOut) return null;
+
+                const [step, setStep] = React.useState(1); // 1: Info, 2: Pagamento, 3: Sucesso
+                const [customerData, setCustomerData] = React.useState({ name: '', email: '', cpf: '' });
+
+                const handlePayment = async (e) => {
+                    e.preventDefault();
+                    setStep('loading');
+
+                    try {
+                        const response = await fetch('http://localhost:3000/api/checkout', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                customerName: customerData.name,
+                                customerEmail: customerData.email,
+                                cartItems: cart,
+                                totalAmount: finalTotal
+                            })
+                        });
+
+                        if (response.ok) {
+                            setStep(3);
+                            setCart([]);
+                        } else {
+                            alert('Erro ao processar pagamento. Tente novamente.');
+                            setStep(2);
+                        }
+                    } catch (error) {
+                        alert('Erro de conexão durante o pagamento.');
+                        setStep(2);
+                    }
+                };
+
+                return (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-moriah-black/80 backdrop-blur-md overflow-y-auto">
+                        <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden mt-10 mb-10 md:my-auto border border-stone-200">
+                            {/* Header do Checkout */}
+                            <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50">
+                                <div>
+                                    <h2 className="font-sans text-2xl font-bold text-moriah-green">Finalizar Compra</h2>
+                                    <p className="text-sm text-stone-500">Checkout Transparente - 100% Seguro</p>
+                                </div>
+                                {step !== 3 && step !== 'loading' && (
+                                    <button onClick={() => setIsCheckingOut(false)} className="p-2 hover:bg-stone-200 rounded-full transition-colors text-stone-500">
+                                        <LucideIcon name="x" className="w-6 h-6" />
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="p-6 md:p-8">
+                                {step === 1 && (
+                                    <form onSubmit={(e) => { e.preventDefault(); setStep(2); }} className="space-y-4">
+                                        <h3 className="font-bold text-lg text-moriah-brown mb-4 flex items-center gap-2"><LucideIcon name="user" className="w-5 h-5" /> Dados de Entrega e NFe</h3>
+                                        <div className="grid grid-cols-1 gap-4">
+                                            <input required type="text" placeholder="Nome Completo" value={customerData.name} onChange={e => setCustomerData({ ...customerData, name: e.target.value })} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
+                                            <input required type="email" placeholder="E-mail" value={customerData.email} onChange={e => setCustomerData({ ...customerData, email: e.target.value })} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
+                                            <input required type="text" placeholder="CPF" value={customerData.cpf} onChange={e => setCustomerData({ ...customerData, cpf: e.target.value })} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
+                                        </div>
+                                        <button type="submit" className="w-full mt-6 bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all">Continuar para o Pagamento</button>
+                                    </form>
+                                )}
+
+                                {step === 2 && (
+                                    <form onSubmit={handlePayment} className="space-y-6">
+                                        <div className="flex items-center justify-between border-b border-stone-100 pb-4">
+                                            <h3 className="font-bold text-lg text-moriah-brown flex items-center gap-2"><LucideIcon name="credit-card" className="w-5 h-5" /> Cartão de Crédito</h3>
+                                            <div className="flex gap-2 text-stone-300">
+                                                <LucideIcon name="lock" className="w-5 h-5 text-emerald-500" />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <input required type="text" placeholder="Número do Cartão" className="w-full md:col-span-2 px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
+                                            <input required type="text" placeholder="Nome Impresso no Cartão" className="w-full md:col-span-2 px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
+                                            <input required type="text" placeholder="Validade (MM/AA)" className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
+                                            <input required type="text" placeholder="CVV" className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
+                                        </div>
+
+                                        <div className="bg-stone-50 p-4 rounded-xl border border-stone-100 mt-6">
+                                            <div className="flex justify-between items-center text-lg font-bold text-moriah-green">
+                                                <span>Total a Pagar:</span>
+                                                <span>R$ {finalTotal.toFixed(2).replace('.', ',')}</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-4">
+                                            <button type="button" onClick={() => setStep(1)} className="px-6 py-4 rounded-xl font-bold text-stone-500 hover:bg-stone-100 transition border border-stone-200 bg-white">Voltar</button>
+                                            <button type="submit" className="flex-1 bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg shadow-moriah-green/20 hover:-translate-y-1 hover:shadow-xl transition-all flex justify-center items-center gap-2">
+                                                Pagar <LucideIcon name="check-circle" className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </form>
+                                )}
+
+                                {step === 'loading' && (
+                                    <div className="text-center py-12 flex flex-col items-center">
+                                        <div className="w-16 h-16 border-4 border-moriah-green border-t-moriah-gold rounded-full animate-spin mb-6"></div>
+                                        <h3 className="font-bold text-xl text-moriah-brown">Processando Pagamento...</h3>
+                                        <p className="text-stone-500 mt-2">Comunicando com a operadora do seu cartão.</p>
+                                    </div>
+                                )}
+
+                                {step === 3 && (
+                                    <div className="text-center py-8 flex flex-col items-center">
+                                        <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6 shadow-sm border-4 border-white outline outline-4 outline-green-50">
+                                            <LucideIcon name="check" className="w-10 h-10" />
+                                        </div>
+                                        <h3 className="font-bold text-3xl text-moriah-brown mb-2">Pagamento Aprovado!</h3>
+                                        <p className="text-stone-500 mb-8 max-w-md mx-auto">
+                                            Seu pedido foi confirmado. Um email com os detalhes e nota fiscal foi enviado para <strong>{customerData.email}</strong>.
+                                        </p>
+                                        <div className="p-6 bg-stone-50 rounded-2xl w-full max-w-sm mb-8 text-left border border-stone-100">
+                                            <p className="text-sm text-stone-500 mb-1">Número do Pedido</p>
+                                            <p className="font-bold text-moriah-green text-lg mb-4">#{(Math.random() * 100000).toFixed(0).padStart(6, '0')}</p>
+                                            <p className="text-sm text-stone-500 mb-1">Previsão de Entrega</p>
+                                            <p className="font-bold text-moriah-green text-lg">Em até {shippingCost === 0 ? '7' : Math.floor(Math.random() * 4) + 2} dias úteis</p>
+                                        </div>
+                                        <button onClick={() => { setIsCheckingOut(false); window.location.reload(); }} className="bg-moriah-green text-moriah-sand font-bold px-8 py-4 rounded-xl hover:-translate-y-1 hover:shadow-xl transition-all w-full">
+                                            Voltar para a Loja
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col font-sans bg-moriah-bg selection:bg-moriah-gold selection:text-white">
+                    <Header />
+                    <Main />
+                    <Footer />
+                    <MobileNav />
+                    <CartDrawer />
+                    <CheckoutModal />
+                </div>
+            );
+        }
+
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
