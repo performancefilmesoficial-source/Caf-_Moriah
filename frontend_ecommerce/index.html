@@ -46,15 +46,18 @@
         }
     </script>
     <style>
+        html {
+            scroll-behavior: smooth;
+            scroll-padding-top: 5rem;
+            /* Compensa a altura do cabeçalho fixo (80px) */
+        }
+
         body {
             font-family: 'Inter', sans-serif;
             background-color: #faf8f5;
             color: #1f1b18;
         }
 
-
-
-        /* Mobile Bottom Nav Shadows */
         .mobile-nav-shadow {
             box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04);
         }
@@ -63,7 +66,7 @@
 
 <body>
     <div id="root">
-        <div class="flex items-center justify-center h-screen bg-[#faf8f5]">
+        <div className="flex items-center justify-center h-screen bg-[#faf8f5]" id="inicio">
             <div class="text-center">
                 <div
                     class="w-12 h-12 border-4 border-[#38220f] border-t-transparent rounded-full animate-spin mx-auto mb-4">
@@ -76,9 +79,25 @@
         function App() {
             const [cart, setCart] = React.useState([]);
             const [isCartOpen, setIsCartOpen] = React.useState(false);
+            const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+            const [isCheckingOut, setIsCheckingOut] = React.useState(false);
+            const [isTrackingOpen, setIsTrackingOpen] = React.useState(false);
+            const [trackingCode, setTrackingCode] = React.useState('');
             const [shippingCep, setShippingCep] = React.useState('');
             const [shippingCost, setShippingCost] = React.useState(0);
-            const [isCheckingOut, setIsCheckingOut] = React.useState(false);
+            const [selectedProduct, setSelectedProduct] = React.useState(null); // Estado da PDP
+
+            // Helper genérico para Imagens vindas do Backend (String comum ou Array JSON)
+            const getProductImages = (urlData) => {
+                if (!urlData) return ['https://images.unsplash.com/photo-1559525839-b184a4d698c7?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80'];
+                try {
+                    const parsed = JSON.parse(urlData);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                    return [urlData]; // Fallback pra string normal
+                } catch (e) {
+                    return [urlData]; // Fallback pra erro de parse
+                }
+            };
 
             const addToCart = (product, grind = null) => {
                 setCart(prev => {
@@ -156,71 +175,135 @@
                 fetchProducts();
             }, []);
 
-            const Header = () => (
-                <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-moriah-sand border-opacity-50">
-                    <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
-                        <div className="flex items-center">
-                            <img src="logo.png" alt="Moriah Café Especial" className="h-10 md:h-12 object-contain" />
+            const [siteSettings, setSiteSettings] = React.useState({
+                hero_title: 'O Café dos Seus Sonhos',
+                hero_subtitle: 'Experiência Sensorial',
+                hero_text: 'Grãos selecionados das melhores origens do Brasil...',
+                hero_video: 'https://cdn.pixabay.com/video/2016/06/17/3494-171876527_large.mp4',
+                about_title: 'Descubra Nossa História',
+                about_subtitle: 'Tradição & Afeto',
+                about_text_1: 'Nascida do amor profundo...',
+                about_text_2: 'Trabalhamos lado a lado...',
+                about_image: 'https://images.unsplash.com/photo-1611162458324-aae1eb4129a4'
+            });
+
+            React.useEffect(() => {
+                fetch('http://localhost:3000/api/site-settings')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data && data.hero_title) {
+                            // Sanitiza chaves nulas do BD para strings vazias evitando crash de métodos React
+                            const sanitizedData = {};
+                            Object.keys(data).forEach(key => {
+                                sanitizedData[key] = data[key] || '';
+                            });
+                            setSiteSettings(sanitizedData);
+                        }
+                    })
+                    .catch(err => console.error("Sem CMS configurado!", err));
+            }, []);
+
+            const Header = () => {
+                const scrollToSection = (e, id) => {
+                    e.preventDefault();
+                    const element = document.getElementById(id);
+                    if (element) {
+                        const offset = 80; // Altura do cabeçalho
+                        const bodyRect = document.body.getBoundingClientRect().top;
+                        const elementRect = element.getBoundingClientRect().top;
+                        const elementPosition = elementRect - bodyRect;
+                        const offsetPosition = elementPosition - offset;
+
+                        window.scrollTo({
+                            top: offsetPosition,
+                            behavior: 'smooth'
+                        });
+                    }
+                };
+
+                return (
+                    <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-moriah-sand border-opacity-50">
+                        <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+                            <div className="flex items-center cursor-pointer" onClick={(e) => scrollToSection(e, 'inicio')}>
+                                <img src="logo.png" alt="Moriah Café Especial" className="h-10 md:h-12 object-contain" />
+                            </div>
+                            <div className="hidden md:flex gap-8 text-sm font-medium">
+                                <a href="#inicio" onClick={(e) => scrollToSection(e, 'inicio')} className="hover:text-moriah-gold transition-colors">Home</a>
+                                <a href="#produtos" onClick={(e) => scrollToSection(e, 'produtos')} className="hover:text-moriah-gold transition-colors">Cafés</a>
+                                <a href="#acessorios" onClick={(e) => scrollToSection(e, 'acessorios')} className="hover:text-moriah-gold transition-colors">Acessórios</a>
+                                <a href="#nossahistoria" onClick={(e) => scrollToSection(e, 'nossahistoria')} className="hover:text-moriah-gold transition-colors">Nossa História</a>
+                                <button onClick={() => setIsTrackingOpen(true)} className="flex items-center gap-2 hover:text-moriah-gold transition-colors"><LucideIcon name="package" className="w-4 h-4" />Rastreio</button>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <button className="p-2 hover:bg-moriah-sand/20 rounded-full transition"><LucideIcon name="search" className="w-5 h-5" /></button>
+                                <button className="p-2 hover:bg-moriah-sand/20 rounded-full transition relative" onClick={() => setIsCartOpen(true)}>
+                                    <LucideIcon name="shopping-bag" className="w-5 h-5" />
+                                    {cart.length > 0 && <span className="absolute top-0 right-0 bg-moriah-gold text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{cart.reduce((a, b) => a + b.quantity, 0)}</span>}
+                                </button>
+                                <button className="hidden md:block p-2 hover:bg-moriah-sand/20 rounded-full transition"><LucideIcon name="user" className="w-5 h-5" /></button>
+                            </div>
                         </div>
-                        <div className="hidden md:flex gap-8 text-sm font-medium">
-                            <a href="#" className="hover:text-moriah-gold transition-colors">Cafés</a>
-                            <a href="#" className="hover:text-moriah-gold transition-colors">Acessórios</a>
-                            <a href="#" className="hover:text-moriah-gold transition-colors">Kits Presente</a>
+                    </header>
+                );
+            };
+
+            const Hero = () => {
+                const scrollToSection = (e, id) => {
+                    e.preventDefault();
+                    const element = document.getElementById(id);
+                    if (element) {
+                        const offset = 80;
+                        const bodyRect = document.body.getBoundingClientRect().top;
+                        const elementRect = element.getBoundingClientRect().top;
+                        window.scrollTo({ top: elementRect - bodyRect - offset, behavior: 'smooth' });
+                    }
+                };
+
+                return (
+                    <section className="relative bg-moriah-black text-white overflow-hidden flex items-center justify-center min-h-[35vh] md:min-h-[40vh] py-12 md:py-16" id="inicio">
+                        <div className="absolute inset-0 z-0">
+                            <video
+                                className="w-full h-full object-cover mix-blend-overlay"
+                                style={{ opacity: siteSettings.hero_video_opacity || 0.6 }}
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                key={siteSettings.hero_video || 'fallback'} // Força recarregamento caso mude no painel
+                            >
+                                <source src={siteSettings.hero_video || ''} type="video/mp4" />
+                                Seu navegador não suporta vídeos.
+                            </video>
+                            <div className="absolute inset-0 bg-gradient-to-t from-moriah-black via-moriah-black/60 to-transparent"></div>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <button className="p-2 hover:bg-moriah-sand/20 rounded-full transition"><LucideIcon name="search" className="w-5 h-5" /></button>
-                            <button className="p-2 hover:bg-moriah-sand/20 rounded-full transition relative" onClick={() => setIsCartOpen(true)}>
-                                <LucideIcon name="shopping-bag" className="w-5 h-5" />
-                                {cart.length > 0 && <span className="absolute top-0 right-0 bg-moriah-gold text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{cart.reduce((a, b) => a + b.quantity, 0)}</span>}
+
+                        <div className={`relative z-10 ${siteSettings.hero_text_align || 'text-center'} max-w-4xl mx-auto mt-6 md:mt-10 px-4`}>
+
+                            <h1 className="font-sans text-5xl md:text-7xl mb-6 font-bold leading-tight drop-shadow-xl whitespace-pre-line">
+                                {siteSettings.hero_title || 'Nossa Vitrine'}
+                            </h1>
+                            <p className="text-stone-300 md:text-lg font-light max-w-2xl mx-auto mb-8 drop-shadow-lg leading-relaxed whitespace-pre-line">
+                                {siteSettings.hero_text || 'Aqui você encontra os melhores produtos.'}
+                            </p>
+
+                            <button onClick={(e) => scrollToSection(e, 'produtos')} className="bg-moriah-gold text-moriah-black font-semibold px-8 py-4 rounded-full shadow-gold hover:-translate-y-1 transition transform duration-300 flex items-center mx-auto gap-3 text-base hover:shadow-xl">
+                                Explorar Cafés Especiais <LucideIcon name="arrow-right" className="w-5 h-5" />
                             </button>
-                            <button className="hidden md:block p-2 hover:bg-moriah-sand/20 rounded-full transition"><LucideIcon name="user" className="w-5 h-5" /></button>
                         </div>
-                    </div>
-                </header>
-            );
-
-            const Hero = () => (
-                <section className="relative bg-moriah-black text-white overflow-hidden flex items-center justify-center min-h-[50vh] md:min-h-[60vh] py-16 md:py-20">
-                    <div className="absolute inset-0 z-0">
-                        <video
-                            className="w-full h-full object-cover opacity-60 mix-blend-overlay"
-                            autoPlay
-                            loop
-                            muted
-                            playsInline
-                            poster="https://images.unsplash.com/photo-1498804103079-a6351b050096?ixlib=rb-4.0.3&auto=format&fit=crop&w=2000&q=80"
-                        >
-                            {/* Exemplo de vídeo placeholder - em produção será o link da CDN VPS */}
-                            <source src="https://cdn.pixabay.com/video/2016/06/17/3494-171876527_large.mp4" type="video/mp4" />
-                            Seu navegador não suporta vídeos.
-                        </video>
-                        <div className="absolute inset-0 bg-gradient-to-t from-moriah-black via-moriah-black/60 to-transparent"></div>
-                    </div>
-
-                    <div className="relative z-10 text-center max-w-4xl mx-auto mt-6 md:mt-10 px-4">
-                        <span className="text-moriah-gold text-xs md:text-sm tracking-[0.2em] uppercase font-semibold mb-4 block drop-shadow-md">Experiência Sensorial</span>
-                        <h1 className="font-sans text-5xl md:text-7xl mb-6 font-bold leading-tight drop-shadow-xl">O Café dos <br /><span className="text-moriah-sand italic font-light drop-shadow-xl">Seus Sonhos</span></h1>
-                        <p className="text-stone-300 md:text-lg font-light max-w-2xl mx-auto mb-8 drop-shadow-lg leading-relaxed">
-                            Grãos selecionados das melhores origens do Brasil, torrados artesanalmente para despertar todos os seus sentidos.
-                        </p>
-
-                        <button className="bg-moriah-gold text-moriah-black font-semibold px-8 py-4 rounded-full shadow-gold hover:-translate-y-1 transition transform duration-300 flex items-center mx-auto gap-3 text-base hover:shadow-xl">
-                            Explorar Cafés Especiais <LucideIcon name="arrow-right" className="w-5 h-5" />
-                        </button>
-                    </div>
-                </section>
-            );
+                    </section>
+                );
+            };
 
             const ProductCard = ({ product }) => {
                 const [grind, setGrind] = React.useState('grao');
-
-
                 const isCoffee = product.category.toLowerCase().includes('grão') || product.name.toLowerCase().includes('café');
+                const images = getProductImages(product.image_url);
+                const mainImage = images[0];
 
                 return (
-                    <div className="group bg-white rounded-3xl overflow-hidden shadow-soft flex flex-col h-full border border-stone-100 relative">
+                    <div className="group bg-white rounded-3xl overflow-hidden shadow-soft flex flex-col h-full border border-stone-100 relative cursor-pointer" onClick={() => setSelectedProduct(product)}>
                         <div className="relative aspect-[4/3] overflow-hidden bg-stone-50">
-                            <img src={product.image_url || 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80'} className="w-full h-full object-cover group-hover:scale-105 transition duration-700" alt={product.name} />
+                            <img src={mainImage} className="w-full h-full object-cover group-hover:scale-105 transition duration-700" alt={product.name} />
                         </div>
                         <div className="p-6 flex flex-col flex-1">
                             <span className="text-[10px] text-stone-400 mb-2 font-bold uppercase tracking-wider">{product.category}</span>
@@ -252,7 +335,7 @@
                             <div className={`mt-${isCoffee ? '0' : 'auto'} pt-4 flex items-center justify-between border-t border-stone-100`}>
                                 <span className="text-2xl font-bold text-moriah-brown">R$ {product.price.toFixed(2).replace('.', ',')}</span>
                                 <button
-                                    onClick={() => addToCart(product, isCoffee ? grind : null)}
+                                    onClick={(e) => { e.stopPropagation(); addToCart(product, isCoffee ? grind : null); }}
                                     className="w-12 h-12 rounded-xl bg-moriah-orange/10 text-moriah-orange hover:bg-moriah-orange hover:text-white flex items-center justify-center transition-colors"
                                 >
                                     <LucideIcon name="shopping-bag" className="w-5 h-5" />
@@ -263,32 +346,23 @@
                 );
             };
 
-            const Testimonials = () => (
-                <section className="bg-moriah-sand/10 py-20 px-4">
-                    <div className="max-w-7xl mx-auto">
-                        <div className="text-center mb-16">
-                            <h2 className="font-sans text-3xl md:text-5xl font-bold text-moriah-brown mb-4">A excelência na xícara</h2>
-                            <p className="text-stone-500 max-w-xl mx-auto font-light">Depoimentos reais de quem não abre mão do melhor sabor todas as manhãs.</p>
+            const OurStory = () => (
+                <section className="bg-moriah-sand/10 py-24 px-4 overflow-hidden relative" id="nossahistoria">
+                    <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-12 lg:gap-20 items-center relative z-10">
+                        <div className="relative aspect-[4/5] md:aspect-square lg:aspect-[4/5] rounded-[2rem] overflow-hidden shadow-2xl group">
+                            <img src={siteSettings.about_image || "https://images.unsplash.com/photo-1611162458324-aae1eb4129a4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"} alt="Nossa História - Moriah Café" className={`w-full h-full object-cover ${siteSettings.about_image_align || 'object-center'} group-hover:scale-105 transition-transform duration-1000`} />
+                            <div className="absolute inset-0 bg-moriah-brown/10 mix-blend-overlay"></div>
                         </div>
-                        <div className="grid md:grid-cols-3 gap-8">
-                            {[1, 2, 3].map(i => (
-                                <div key={i} className="bg-white p-8 rounded-[2rem] shadow-soft relative">
-                                    <div className="absolute top-6 right-6 text-moriah-gold opacity-20"><LucideIcon name="quote" className="w-12 h-12" /></div>
-                                    <div className="flex text-moriah-gold mb-4">
-                                        {[1, 2, 3, 4, 5].map(star => <LucideIcon key={star} name="star" className="w-4 h-4 fill-current" />)}
-                                    </div>
-                                    <p className="text-stone-600 font-sans italic mb-6 leading-relaxed">"O melhor café que já provei! O aroma que fica na casa de manhã é indescritível e a apresentação é um verdadeiro luxo. Sou assinante fiel."</p>
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-stone-200 rounded-full overflow-hidden">
-                                            <img src={`https://i.pravatar.cc/150?img=${i + 10}`} />
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-sm text-moriah-black">Cliente Premium {i}</p>
-                                            <p className="text-[10px] text-stone-400 uppercase tracking-wider">Comprador Verificado</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                        <div className="flex flex-col justify-center">
+                            <h2 className="font-sans text-4xl md:text-5xl lg:text-6xl font-bold text-moriah-brown mb-8 leading-tight">
+                                {siteSettings.about_title || 'Nossa História'}
+                            </h2>
+                            <p className="text-stone-600 font-light leading-relaxed mb-6 text-lg md:text-xl">
+                                {siteSettings.about_text_1 || 'Conteúdo inicial da nossa jornada...'}
+                            </p>
+                            <p className="text-stone-500 font-light leading-relaxed mb-10 text-base md:text-lg">
+                                {siteSettings.about_text_2 || 'Desde então servindo excelência e qualidade aos clientes.'}
+                            </p>
                         </div>
                     </div>
                 </section>
@@ -299,46 +373,49 @@
                     <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
                         <div className="md:col-span-1">
                             <div className="flex items-center gap-2 mb-6">
-                                <img src="logo.png" alt="Moriah" className="h-10 object-contain invert brightness-0" />
+                                <img src="logo.png" alt="Moriah" className="h-16 object-contain invert brightness-0" />
                             </div>
-                            <p className="text-stone-400 text-sm font-light leading-relaxed mb-6">A arte do café especial levada à sério. Da fazenda até a sua xícara, prezamos pela excelência e experiência única para os paladares mais exigentes.</p>
+
                             <div className="flex gap-4">
-                                <a href="#" className="text-stone-400 hover:text-moriah-gold transition"><LucideIcon name="instagram" className="w-5 h-5" /></a>
-                                <a href="#" className="text-stone-400 hover:text-moriah-gold transition"><LucideIcon name="facebook" className="w-5 h-5" /></a>
+                                <a href="https://instagram.com/cafemoriah__" target="_blank" className="text-stone-400 hover:text-moriah-gold transition"><LucideIcon name="instagram" className="w-6 h-6" /></a>
                             </div>
                         </div>
                         <div>
                             <h4 className="font-sans text-lg font-bold mb-6 text-white tracking-wide">Nossa Loja</h4>
                             <ul className="space-y-4 text-sm text-stone-400 font-light">
-                                <li><a href="#" className="hover:text-moriah-gold transition">Cafés Especiais</a></li>
-                                <li><a href="#" className="hover:text-moriah-gold transition">Métodos e Acessórios</a></li>
-                                <li><a href="#" className="hover:text-moriah-gold transition">Clube de Assinatura</a></li>
-                                <li><a href="#" className="hover:text-moriah-gold transition">Para Empresas</a></li>
+                                <li><a href="#produtos" onClick={(e) => scrollToSection(e, 'produtos')} className="hover:text-moriah-gold transition">Cafés</a></li>
+                                <li><a href="#acessorios" onClick={(e) => scrollToSection(e, 'acessorios')} className="hover:text-moriah-gold transition">Acessórios</a></li>
+                                <li><a href="#nossahistoria" onClick={(e) => scrollToSection(e, 'nossahistoria')} className="hover:text-moriah-gold transition">Nossa História</a></li>
                             </ul>
                         </div>
                         <div>
-                            <h4 className="font-sans text-lg font-bold mb-6 text-white tracking-wide">Ajuda & Contato</h4>
-                            <ul className="space-y-4 text-sm text-stone-400 font-light">
-                                <li><a href="#" className="hover:text-moriah-gold transition">Rastrear Pedido</a></li>
+                            <h4 className="font-sans text-lg font-bold mb-6 text-white tracking-wide">Acessos Rápidos</h4>
+                            <ul className="space-y-3 font-light text-stone-400">
+                                <li><button onClick={() => setIsTrackingOpen(true)} className="text-moriah-gold hover:text-white transition font-bold flex items-center gap-2"><LucideIcon name="package-search" className="w-4 h-4" /> Rastrear Meu Pedido</button></li>
                                 <li><a href="#" className="hover:text-moriah-gold transition underline">Política de Trocas e Devoluções</a></li>
                                 <li><a href="#" className="hover:text-moriah-gold transition">Dúvidas Frequentes</a></li>
-                                <li><a href="#" className="hover:text-moriah-gold transition flex items-center gap-2"><LucideIcon name="smartphone" className="w-4 h-4" /> (11) 99999-9999</a></li>
+                                <li><a href="https://wa.me/5575992073245?text=Olá,%20Moriah%20Café!" target="_blank" className="hover:text-green-500 transition font-bold flex items-center gap-2"><LucideIcon name="message-circle" className="w-4 h-4" /> (75) 99207-3245</a></li>
                             </ul>
                         </div>
                         <div>
-                            <h4 className="font-sans text-lg font-bold mb-6 text-white tracking-wide">Pagamento Seguros & Envios</h4>
-                            <div className="flex gap-2 items-center mb-4 opacity-70">
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/Visa_Logo.png" className="h-5 bg-white px-1.5 py-0.5 rounded-sm object-contain" alt="Visa" />
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/MasterCard_Logo.svg" className="h-5 bg-white px-1.5 py-0.5 rounded-sm object-contain" alt="MasterCard" />
-                                <img src="https://upload.wikimedia.org/wikipedia/commons/a/a2/Logotipo_do_Pix.svg" className="h-5 bg-white px-1.5 py-0.5 rounded-sm object-contain" alt="Pix" />
-                            </div>
-
-                            <div className="flex gap-2 items-center opacity-70">
-                                <img src="https://logospng.org/download/correios/logo-correios-512.png" className="h-5 bg-white px-1.5 py-0.5 rounded-sm object-contain" alt="Correios" />
+                            <h4 className="font-sans text-lg font-bold mb-6 text-white tracking-wide">Pagamentos Seguros</h4>
+                            <div className="flex gap-3 items-center mb-6 opacity-80">
+                                {/* SVG Cartão */}
+                                <div className="h-8 bg-white px-2 rounded flex items-center justify-center">
+                                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="text-blue-900"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>
+                                </div>
+                                {/* SVG Boleto/Barcode */}
+                                <div className="h-8 bg-white px-2 rounded flex items-center justify-center">
+                                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" className="text-stone-800"><path d="M3 5v14"></path><path d="M8 5v14"></path><path d="M12 5v14"></path><path d="M17 5v14"></path><path d="M21 5v14"></path></svg>
+                                </div>
+                                {/* SVG PIX Minimalista */}
+                                <div className="h-8 bg-white px-2 rounded flex items-center justify-center">
+                                    <svg viewBox="0 0 512 512" width="24" height="24" xmlns="http://www.w3.org/2000/svg" fill="#32bcad"><path d="M127.3 125l-26.4 26.4 128.8 128.8L101 408.9l26.4 26.4 155.1-155.1L127.3 125zm284.1 261.6l26.4-26.4-128.8-128.8 128.8-128.8-26.4-26.4-155.1 155.1L411.4 386.6z" /></svg>
+                                </div>
                             </div>
 
                             <div className="mt-6 flex items-center gap-2 text-stone-400 text-xs font-light">
-                                <LucideIcon name="shield-check" className="w-4 h-4 text-emerald-500" /> Transação Criptografada (3D Secure via Gateway)
+                                <LucideIcon name="shield-check" className="w-4 h-4 text-emerald-500" /> Transação Criptografada (3D Secure)
                             </div>
                         </div>
                     </div>
@@ -347,8 +424,8 @@
                     <div className="max-w-7xl mx-auto pt-8 mt-12 border-t border-white/10 flex flex-col md:flex-row items-center justify-between text-xs text-stone-500 font-light gap-4">
                         <div className="text-center md:text-left">
                             <p className="mb-1 uppercase tracking-widest text-stone-400">&copy; {new Date().getFullYear()} Moriah Café. Todos os direitos reservados.</p>
-                            <p>MORIAH CAFE LTDA - CNPJ: 00.000.000/0001-00</p>
-                            <p>Rua Exemplo de Torrefação, 123 - Centro, São Paulo/SP</p>
+                            <p>MORIAH CAFE LTDA - CNPJ: 63.644.379/0001-56</p>
+                            <p>Bahia / BA</p>
                         </div>
                         <div className="flex gap-4">
                             <a href="#" className="hover:text-white transition">Termos de Serviço</a>
@@ -373,10 +450,9 @@
                         {cart.length > 0 && <span className="absolute top-1 right-2 bg-moriah-gold text-white text-[9px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">{cart.reduce((a, b) => a + b.quantity, 0)}</span>}
                         <span className="text-[9px] font-bold uppercase tracking-wider">Carrinho</span>
                     </button>
-                    <button className="flex flex-col items-center justify-center flex-1 py-2 transition-all text-stone-400 hover:text-white">
-                        <LucideIcon name="user" className="w-5 h-5 mb-1" />
-                        <span className="text-[9px] font-bold uppercase tracking-wider">Perfil</span>
-                        ```html
+                    <button onClick={() => setIsTrackingOpen(true)} className="flex flex-col items-center justify-center flex-1 py-2 transition-all text-stone-400 hover:text-white">
+                        <LucideIcon name="package" className="w-5 h-5 mb-1 text-moriah-gold" />
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-moriah-gold">Rastreio</span>
                     </button>
                 </nav>
             );
@@ -412,7 +488,7 @@
                         </div>
                     </section>
 
-                    <section className="bg-stone-50 border-t border-stone-100 py-24 px-4">
+                    <section className="bg-stone-50 border-t border-stone-100 py-24 px-4" id="acessorios">
                         <div className="max-w-7xl mx-auto">
                             <div className="text-center mb-16">
                                 <span className="text-moriah-gold text-sm tracking-[0.2em] uppercase font-bold mb-4 block">Para extrações perfeitas</span>
@@ -435,7 +511,7 @@
                             )}
                         </div>
                     </section>
-                    <Testimonials />
+                    <OurStory />
                 </main>
             );
 
@@ -532,7 +608,7 @@
                                         onClick={() => { setIsCartOpen(false); setIsCheckingOut(true); }}
                                         className="w-full bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg shadow-moriah-green/20 hover:-translate-y-1 hover:shadow-xl hover:bg-emerald-900 transition-all duration-300 flex items-center justify-center gap-2"
                                     >
-                                        Ir para Pagamento Segurto <LucideIcon name="lock" className="w-4 h-4" />
+                                        Ir para Pagamento Seguro <LucideIcon name="lock" className="w-4 h-4" />
                                     </button>
                                 </div>
                             </div>
@@ -541,11 +617,118 @@
                 </div>
             );
 
+            const ProductModal = () => {
+                if (!selectedProduct) return null;
+                const images = getProductImages(selectedProduct.image_url);
+                const [currentImageIdx, setCurrentImageIdx] = React.useState(0);
+                const [quantity, setQuantity] = React.useState(1);
+                const [grind, setGrind] = React.useState('grao');
+                const isCoffee = selectedProduct.category.toLowerCase().includes('grão') || selectedProduct.name.toLowerCase().includes('café');
+
+                const handleAddToCart = () => {
+                    for (let i = 0; i < quantity; i++) {
+                        addToCart(selectedProduct, isCoffee ? grind : null);
+                    }
+                    setSelectedProduct(null);
+                };
+
+                return (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                        <div className="absolute inset-0 bg-moriah-black/80 backdrop-blur-sm" onClick={() => setSelectedProduct(null)}></div>
+                        <div className="relative bg-white w-full max-w-4xl max-h-[90vh] rounded-[2rem] shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in zoom-in-95 duration-300">
+
+                            {/* Botão Fechar Desktop */}
+                            <button onClick={() => setSelectedProduct(null)} className="absolute top-4 right-4 z-20 bg-white/80 backdrop-blur text-stone-600 p-2 rounded-full hover:bg-stone-100 transition shadow-sm">
+                                <LucideIcon name="x" className="w-5 h-5" />
+                            </button>
+
+                            {/* Galeria Lado Esquerdo */}
+                            <div className="w-full md:w-1/2 bg-stone-50 flex flex-col">
+                                <div className="relative aspect-square w-full">
+                                    <img src={images[currentImageIdx]} className="w-full h-full object-cover" alt={selectedProduct.name} />
+                                    {images.length > 1 && (
+                                        <>
+                                            <button onClick={() => setCurrentImageIdx(prev => prev === 0 ? images.length - 1 : prev - 1)} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full shadow hover:bg-white text-stone-700 transition">
+                                                <LucideIcon name="chevron-left" className="w-5 h-5" />
+                                            </button>
+                                            <button onClick={() => setCurrentImageIdx(prev => prev === images.length - 1 ? 0 : prev + 1)} className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full shadow hover:bg-white text-stone-700 transition">
+                                                <LucideIcon name="chevron-right" className="w-5 h-5" />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                                {images.length > 1 && (
+                                    <div className="flex gap-2 p-4 overflow-x-auto bg-stone-100 border-t border-stone-200">
+                                        {images.map((img, idx) => (
+                                            <button key={idx} onClick={() => setCurrentImageIdx(idx)} className={`w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border-2 transition-all ${currentImageIdx === idx ? 'border-moriah-orange opacity-100 shadow-md' : 'border-transparent opacity-60 hover:opacity-100'}`}>
+                                                <img src={img} className="w-full h-full object-cover" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Detalhes Lado Direito */}
+                            <div className="w-full md:w-1/2 p-6 md:p-10 flex flex-col overflow-y-auto">
+                                <span className="text-xs text-moriah-orange font-bold uppercase tracking-widest mb-2 block">{selectedProduct.category}</span>
+                                <h2 className="text-3xl font-sans font-bold text-moriah-green mb-2">{selectedProduct.name}</h2>
+                                <span className="text-xs text-stone-400 font-mono tracking-widest mb-6 block">SKU: {selectedProduct.sku}</span>
+
+                                <div className="text-3xl font-bold text-moriah-brown mb-8 pb-6 border-b border-stone-100">
+                                    R$ {selectedProduct.price.toFixed(2).replace('.', ',')}
+                                </div>
+
+                                {selectedProduct.description && (
+                                    <div className="mb-8">
+                                        <h4 className="font-bold text-stone-800 mb-3 flex items-center gap-2"><LucideIcon name="book-open" className="w-4 h-4 text-moriah-gold" /> Notas e Detalhes</h4>
+                                        <p className="text-stone-600 font-light leading-relaxed whitespace-pre-wrap text-sm">{selectedProduct.description}</p>
+                                    </div>
+                                )}
+
+                                {isCoffee && (
+                                    <div className="mb-8 p-5 bg-stone-50 rounded-2xl border border-stone-100">
+                                        <h4 className="font-bold text-sm text-stone-700 mb-4 block cursor-default">Qual a moagem preferida?</h4>
+                                        <div className="flex gap-4">
+                                            <label className="flex items-center gap-3 cursor-pointer group/label">
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${grind === 'grao' ? 'border-moriah-orange bg-moriah-orange/10' : 'border-stone-300 group-hover/label:border-moriah-orange'}`}>
+                                                    {grind === 'grao' && <div className="w-2.5 h-2.5 bg-moriah-orange rounded-full"></div>}
+                                                </div>
+                                                <span className="text-sm font-bold text-stone-700">Café em Grão</span>
+                                                <input type="radio" value="grao" className="hidden" onChange={() => setGrind('grao')} checked={grind === 'grao'} />
+                                            </label>
+                                            <label className="flex items-center gap-3 cursor-pointer group/label">
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${grind === 'moido' ? 'border-moriah-orange bg-moriah-orange/10' : 'border-stone-300 group-hover/label:border-moriah-orange'}`}>
+                                                    {grind === 'moido' && <div className="w-2.5 h-2.5 bg-moriah-orange rounded-full"></div>}
+                                                </div>
+                                                <span className="text-sm font-bold text-stone-700">Café Moído</span>
+                                                <input type="radio" value="moido" className="hidden" onChange={() => setGrind('moido')} checked={grind === 'moido'} />
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="mt-auto grid grid-cols-3 gap-4">
+                                    <div className="col-span-1 flex items-center justify-between bg-stone-50 border border-stone-200 rounded-2xl px-2">
+                                        <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="p-3 text-stone-500 hover:text-moriah-orange transition rounded-xl focus:outline-none">-</button>
+                                        <span className="font-bold text-stone-800 text-lg">{quantity}</span>
+                                        <button onClick={() => setQuantity(quantity + 1)} className="p-3 text-stone-500 hover:text-moriah-orange transition rounded-xl focus:outline-none">+</button>
+                                    </div>
+                                    <button onClick={handleAddToCart} className="col-span-2 bg-moriah-orange text-white font-bold rounded-2xl shadow-lg hover:shadow-xl hover:bg-orange-600 transition-all flex items-center justify-center gap-2">
+                                        <LucideIcon name="shopping-cart" className="w-5 h-5" /> Adicionar à Sacola
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
             const CheckoutModal = () => {
                 if (!isCheckingOut) return null;
 
-                const [step, setStep] = React.useState(1); // 1: Info, 2: Pagamento, 3: Sucesso
+                const [step, setStep] = React.useState(1); // 1: Info, 2: PIX Checkout, 3: Sucesso
                 const [customerData, setCustomerData] = React.useState({ name: '', email: '', cpf: '' });
+                const [pixData, setPixData] = React.useState(null);
 
                 const handlePayment = async (e) => {
                     e.preventDefault();
@@ -558,21 +741,29 @@
                             body: JSON.stringify({
                                 customerName: customerData.name,
                                 customerEmail: customerData.email,
+                                customerCpf: customerData.cpf,
                                 cartItems: cart,
                                 totalAmount: finalTotal
                             })
                         });
 
-                        if (response.ok) {
-                            setStep(3);
+                        const data = await response.json();
+
+                        if (response.ok && data.success) {
+                            setPixData({
+                                payload: data.pixPayload,
+                                encodedImage: data.encodedImage,
+                                invoiceUrl: data.invoiceUrl
+                            });
+                            setStep('pix');
                             setCart([]);
                         } else {
-                            alert('Erro ao processar pagamento. Tente novamente.');
-                            setStep(2);
+                            alert('Erro ao processar integração bancária. Tente novamente.');
+                            setStep(1);
                         }
                     } catch (error) {
                         alert('Erro de conexão durante o pagamento.');
-                        setStep(2);
+                        setStep(1);
                     }
                 };
 
@@ -594,46 +785,50 @@
 
                             <div className="p-6 md:p-8">
                                 {step === 1 && (
-                                    <form onSubmit={(e) => { e.preventDefault(); setStep(2); }} className="space-y-4">
+                                    <form onSubmit={handlePayment} className="space-y-4">
                                         <h3 className="font-bold text-lg text-moriah-brown mb-4 flex items-center gap-2"><LucideIcon name="user" className="w-5 h-5" /> Dados de Entrega e NFe</h3>
                                         <div className="grid grid-cols-1 gap-4">
                                             <input required type="text" placeholder="Nome Completo" value={customerData.name} onChange={e => setCustomerData({ ...customerData, name: e.target.value })} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
                                             <input required type="email" placeholder="E-mail" value={customerData.email} onChange={e => setCustomerData({ ...customerData, email: e.target.value })} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
-                                            <input required type="text" placeholder="CPF" value={customerData.cpf} onChange={e => setCustomerData({ ...customerData, cpf: e.target.value })} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
+                                            <input required type="text" placeholder="CPF/CNPJ" value={customerData.cpf} onChange={e => setCustomerData({ ...customerData, cpf: e.target.value })} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
                                         </div>
-                                        <button type="submit" className="w-full mt-6 bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all">Continuar para o Pagamento</button>
+                                        <button type="submit" className="w-full mt-6 bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all">Pagar via PIX com Desconto</button>
                                     </form>
                                 )}
 
-                                {step === 2 && (
-                                    <form onSubmit={handlePayment} className="space-y-6">
-                                        <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-                                            <h3 className="font-bold text-lg text-moriah-brown flex items-center gap-2"><LucideIcon name="credit-card" className="w-5 h-5" /> Cartão de Crédito</h3>
-                                            <div className="flex gap-2 text-stone-300">
-                                                <LucideIcon name="lock" className="w-5 h-5 text-emerald-500" />
+                                {step === 'pix' && pixData && (
+                                    <div className="space-y-6 text-center">
+                                        <div className="flex flex-col items-center justify-center border-b border-stone-100 pb-6">
+                                            <div className="w-16 h-16 bg-moriah-green/10 text-moriah-green rounded-full flex items-center justify-center mb-4">
+                                                <LucideIcon name="qr-code" className="w-8 h-8" />
                                             </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <input required type="text" placeholder="Número do Cartão" className="w-full md:col-span-2 px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
-                                            <input required type="text" placeholder="Nome Impresso no Cartão" className="w-full md:col-span-2 px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
-                                            <input required type="text" placeholder="Validade (MM/AA)" className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
-                                            <input required type="text" placeholder="CVV" className="w-full px-4 py-3 bg-white border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold" />
+                                            <h3 className="font-bold text-2xl text-moriah-brown mb-2">Pague via PIX Asaas</h3>
+                                            <p className="text-stone-500 max-w-sm mx-auto">Use o aplicativo do seu banco para ler o QR Code ou copie o código abaixo para finalizar sua compra de R$ {finalTotal.toFixed(2).replace('.', ',')}</p>
                                         </div>
 
-                                        <div className="bg-stone-50 p-4 rounded-xl border border-stone-100 mt-6">
-                                            <div className="flex justify-between items-center text-lg font-bold text-moriah-green">
-                                                <span>Total a Pagar:</span>
-                                                <span>R$ {finalTotal.toFixed(2).replace('.', ',')}</span>
+                                        <div className="flex justify-center my-6">
+                                            <div className="p-4 bg-white border-2 border-stone-100 rounded-3xl shadow-sm inline-block">
+                                                <img src={`data:image/jpeg;base64,${pixData.encodedImage}`} alt="QR Code PIX" className="w-48 h-48 md:w-56 md:h-56 object-contain" />
                                             </div>
                                         </div>
 
-                                        <div className="flex gap-4">
-                                            <button type="button" onClick={() => setStep(1)} className="px-6 py-4 rounded-xl font-bold text-stone-500 hover:bg-stone-100 transition border border-stone-200 bg-white">Voltar</button>
-                                            <button type="submit" className="flex-1 bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg shadow-moriah-green/20 hover:-translate-y-1 hover:shadow-xl transition-all flex justify-center items-center gap-2">
-                                                Pagar <LucideIcon name="check-circle" className="w-5 h-5" />
+                                        <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+                                            <p className="text-xs font-bold uppercase text-stone-400 mb-2">Copia e Cola</p>
+                                            <div className="flex items-center gap-2">
+                                                <input readOnly type="text" value={pixData.payload} className="flex-1 bg-white border border-stone-200 px-3 py-2 rounded-lg text-sm text-stone-600 outline-none" />
+                                                <button onClick={() => { navigator.clipboard.writeText(pixData.payload); alert('Código copiado!'); }} className="bg-moriah-gold text-white p-2.5 rounded-lg hover:bg-yellow-500 transition shadow-sm">
+                                                    <LucideIcon name="copy" className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-4 flex flex-col gap-3">
+                                            <button onClick={() => { setIsCheckingOut(false); window.location.reload(); }} className="w-full bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all">
+                                                Já Realizei o Pagamento
                                             </button>
+                                            <a href={pixData.invoiceUrl} target="_blank" className="text-sm font-semibold text-stone-400 hover:text-moriah-green underline">Abrir Fatura Oficial (PDF/Link)</a>
                                         </div>
-                                    </form>
+                                    </div>
                                 )}
 
                                 {step === 'loading' && (
@@ -670,6 +865,56 @@
                 );
             };
 
+            const TrackingModal = () => {
+                if (!isTrackingOpen) return null;
+
+                const handleTrack = (e) => {
+                    e.preventDefault();
+                    if (!trackingCode.trim()) return;
+
+                    // Redireciona para o site de rastreio dos Correios via URL com o código colado
+                    const correiosUrl = `https://rastreamento.correios.com.br/app/index.php?codigo=${trackingCode.trim().toUpperCase()}`;
+                    window.open(correiosUrl, '_blank');
+                    setIsTrackingOpen(false);
+                    setTrackingCode('');
+                };
+
+                return (
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-moriah-black/80 backdrop-blur-md">
+                        <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden border border-stone-200">
+                            <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50">
+                                <div>
+                                    <h2 className="font-sans text-xl font-bold text-moriah-green flex items-center gap-2"><LucideIcon name="package-search" className="w-5 h-5" /> Rastrear Pedido</h2>
+                                    <p className="text-sm text-stone-500">Acompanhe a sua entrega (Correios)</p>
+                                </div>
+                                <button onClick={() => setIsTrackingOpen(false)} className="p-2 hover:bg-stone-200 rounded-full transition-colors text-stone-500">
+                                    <LucideIcon name="x" className="w-6 h-6" />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleTrack} className="p-6 md:p-8 space-y-6">
+                                <div>
+                                    <label className="text-sm font-bold text-stone-500 mb-2 block">Código de Rastreamento</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="Ex: QA123456789BR"
+                                        value={trackingCode}
+                                        onChange={(e) => setTrackingCode(e.target.value)}
+                                        className="w-full px-4 py-4 bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:border-moriah-gold uppercase placeholder-stone-300 font-mono text-center tracking-widest font-bold"
+                                    />
+                                    <p className="text-xs text-stone-400 mt-3 text-center">Você recebe o código por email após o despacho dos grãos.</p>
+                                </div>
+
+                                <button type="submit" className="w-full bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all flex items-center justify-center gap-2">
+                                    Buscar Pacote <LucideIcon name="external-link" className="w-4 h-4" />
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                );
+            };
+
             return (
                 <div className="min-h-screen flex flex-col font-sans bg-moriah-bg selection:bg-moriah-gold selection:text-white">
                     <Header />
@@ -678,6 +923,8 @@
                     <MobileNav />
                     <CartDrawer />
                     <CheckoutModal />
+                    <ProductModal />
+                    <TrackingModal />
                 </div>
             );
         }

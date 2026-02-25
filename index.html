@@ -155,6 +155,271 @@
             </button>
         );
 
+        const ProductForm = ({ isEdit, editingProduct, setProducts, setEditingProduct, setView }) => {
+            // Lógica para carregar imagens antigas de DB como array
+            const loadImages = (urlData) => {
+                if (!urlData) return [];
+                try {
+                    const parsed = JSON.parse(urlData);
+                    if (Array.isArray(parsed)) return parsed;
+                    return [urlData];
+                } catch (e) {
+                    return [urlData];
+                }
+            };
+
+            const [formData, setFormData] = React.useState(isEdit && editingProduct ? {
+                ...editingProduct,
+                image_url: loadImages(editingProduct.image_url) // Agora image_url é sempre Array aqui dentro
+            } : {
+                name: '', category: 'Café Grão', cost: '', price: '', stock: '', minStock: '5',
+                sku: '', image_url: [], description: '', weight_grams: 250, sell_online: 1
+            });
+            const [isGeneratingAI, setIsGeneratingAI] = React.useState(false);
+            const [isUploading, setIsUploading] = React.useState(false);
+
+            const handleChange = (e) => {
+                const { name, value, type, checked } = e.target;
+                setFormData(prev => ({
+                    ...prev,
+                    [name]: type === 'checkbox' ? (checked ? 1 : 0) : value
+                }));
+            };
+
+            const generateWithAI = async (field) => {
+                if (!formData.name) {
+                    alert('Digite o nome do produto primeiro (ex: "Café Especial Torra Clara")');
+                    return;
+                }
+                setIsGeneratingAI(field);
+                try {
+                    const res = await fetch('http://localhost:3000/api/generate-ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ productName: formData.name })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        setFormData(prev => ({
+                            ...prev,
+                            sku: field === 'sku' ? data.sku : prev.sku,
+                            description: field === 'description' ? data.description : prev.description
+                        }));
+                    } else throw new Error(data.error);
+                } catch (e) {
+                    alert('Erro na IA: ' + e.message);
+                }
+                setIsGeneratingAI(false);
+            };
+
+            const handleImageUpload = async (e) => {
+                const files = Array.from(e.target.files);
+                if (!files || files.length === 0) return;
+                setIsUploading(true);
+
+                // Criar array para múltiplas URLs enviadas de uma vez
+                const newUrls = [];
+
+                for (const file of files) {
+                    const uploadData = new FormData();
+                    uploadData.append('image', file);
+                    try {
+                        const res = await fetch('http://localhost:3000/api/upload', {
+                            method: 'POST',
+                            body: uploadData
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                            newUrls.push(`http://localhost:3000${data.imageUrl}`);
+                        } else throw new Error(data.error);
+                    } catch (e) {
+                        alert(`Erro ao enviar imagem ${file.name}: ` + e.message);
+                    }
+                }
+
+                if (newUrls.length > 0) {
+                    setFormData(prev => ({ ...prev, image_url: [...prev.image_url, ...newUrls] }));
+                }
+
+                setIsUploading(false);
+                // Reseta input de file
+                e.target.value = null;
+            };
+
+            const removeImage = (indexToRemove) => {
+                setFormData(prev => ({
+                    ...prev,
+                    image_url: prev.image_url.filter((_, idx) => idx !== indexToRemove)
+                }));
+            };
+
+            return (
+                <div class="max-w-2xl mx-auto bg-white p-8 rounded-3xl shadow-lg border border-stone-100 animate-in zoom-in-95 duration-300 mb-20 md:mb-0">
+                    <h2 class="text-2xl font-bold mb-6">{isEdit ? 'Editar Produto' : 'Novo Produto'}</h2>
+                    <div class="grid grid-cols-1 gap-8">
+                        <form class="space-y-6" onSubmit={async (e) => {
+                            e.preventDefault();
+                            const productData = {
+                                name: formData.name,
+                                category: formData.category,
+                                cost: parseFloat(formData.cost),
+                                price: parseFloat(formData.price),
+                                stock: parseInt(formData.stock),
+                                minStock: parseInt(formData.minStock),
+                                sku: formData.sku,
+                                image_url: Array.isArray(formData.image_url) ? JSON.stringify(formData.image_url) : formData.image_url, // fallback seguro
+                                description: formData.description,
+                                weight_grams: parseInt(formData.weight_grams) || 250,
+                                sell_online: formData.sell_online
+                            };
+
+                            try {
+                                let res;
+                                if (isEdit) {
+                                    res = await fetch(`http://localhost:3000/api/products/${editingProduct.id}`, {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(productData)
+                                    });
+                                } else {
+                                    res = await fetch('http://localhost:3000/api/products', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(productData)
+                                    });
+                                }
+
+                                if (res.ok) {
+                                    const reload = await fetch('http://localhost:3000/api/products');
+                                    const newData = await reload.json();
+                                    setProducts(newData);
+                                    setEditingProduct(null);
+                                    setView('inventory');
+                                } else {
+                                    alert("Erro ao salvar o produto.");
+                                }
+                            } catch (error) {
+                                console.error("Erro no processamento:", error);
+                                alert("Erro de conexão com o servidor.");
+                            }
+                        }}>
+                            <div>
+                                <label class="block text-sm font-medium text-stone-500 mb-1">Nome do Produto</label>
+                                <input name="name" value={formData.name} onChange={handleChange} required class="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-moriah-brown/50 outline-none font-bold text-lg" placeholder="Ex: Café Especial Torra Média" />
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="block text-sm font-medium text-stone-500">SKU / Barcode</label>
+                                        <button type="button" onClick={() => generateWithAI('sku')} class="text-[10px] bg-indigo-50 text-indigo-600 font-bold px-2 py-1 rounded hover:bg-indigo-100 flex items-center gap-1">
+                                            {isGeneratingAI === 'sku' ? '⏳ Gerando...' : '✨ Gerador IA'}
+                                        </button>
+                                    </div>
+                                    <input name="sku" value={formData.sku} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none uppercase font-mono" placeholder="Ex: CAFE-ESP-250G" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-stone-500 mb-1">Categoria</label>
+                                    <select name="category" value={formData.category} onChange={handleChange} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none">
+                                        <option>Café Grão</option>
+                                        <option>Café Moído</option>
+                                        <option>Acessórios</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200">
+                                <div class="flex items-center justify-between mb-3">
+                                    <label class="font-bold text-stone-700">Fotos do Produto (Site & PDV)</label>
+                                    <div class="text-xs text-stone-500 font-medium bg-white px-2 py-1 rounded-md border border-stone-200">
+                                        {formData.image_url?.length || 0} foto(s)
+                                    </div>
+                                </div>
+                                <div class="space-y-4">
+                                    <div class="flex items-center gap-3 overflow-x-auto pb-2">
+                                        {formData.image_url && formData.image_url.length > 0 ? (
+                                            formData.image_url.map((url, idx) => (
+                                                <div key={idx} class="relative w-20 h-20 rounded-xl overflow-hidden border border-stone-200 bg-white shrink-0 group">
+                                                    <img src={url} class="w-full h-full object-cover" />
+                                                    <button type="button" onClick={() => removeImage(idx)} class="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow opacity-0 group-hover:opacity-100 transition-opacity"><LucideIcon name="x" className="w-3 h-3" /></button>
+                                                    {idx === 0 && <div class="absolute bottom-0 inset-x-0 bg-moriah-brown/90 text-white text-[9px] font-bold text-center py-0.5">PRINCIPAL</div>}
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div class="w-20 h-20 rounded-xl border-2 border-dashed border-stone-300 flex items-center justify-center bg-white text-stone-400 shrink-0">
+                                                <LucideIcon name="image" className="w-8 h-8 opacity-40 mb-1" />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div class="bg-white border border-stone-200 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3 shadow-sm">
+                                        <div class="flex items-center gap-3 pl-2">
+                                            <div class="bg-stone-50 p-2 rounded-lg text-moriah-brown">
+                                                <LucideIcon name="images" className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <p class="text-xs font-bold text-stone-700">Adicionar mais fotos</p>
+                                                <p class="text-[10px] text-stone-500">Selecione imagens .JPG, .PNG ou .WEBP</p>
+                                            </div>
+                                        </div>
+                                        <label class="cursor-pointer bg-moriah-brown text-white px-4 py-2 rounded-xl hover:bg-moriah-dark transition-all font-bold text-sm flex items-center gap-2 shadow w-full md:w-auto justify-center">
+                                            {isUploading ? <><div className="w-4 h-4 border-2 border-stone-300 border-t-white rounded-full animate-spin"></div> Enviando...</> : <><LucideIcon name="upload-cloud" className="w-4 h-4" /> Selecionar Fotos</>}
+                                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-sm font-medium text-stone-500">Descrição do Produto (Site)</label>
+                                    <button type="button" onClick={() => generateWithAI('description')} class="text-xs bg-indigo-50 text-indigo-600 font-bold px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 flex items-center gap-1 shadow-sm transition-all hover:scale-105 active:scale-95">
+                                        {isGeneratingAI === 'description' ? <span class="animate-pulse">⏳ Escrevendo texto vendedor...</span> : <><LucideIcon name="sparkles" className="w-3.5 h-3.5" /> Escrever com Inteligência Artificial</>}
+                                    </button>
+                                </div>
+                                <textarea name="description" value={formData.description} onChange={handleChange} rows="4" class="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-moriah-brown/50 outline-none leading-relaxed" placeholder="Descreva os sabores, origem e experiência do café... (Ou clique em Gerar com IA acima)"></textarea>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
+                                    <input type="number" step="0.01" name="cost" value={formData.cost} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" placeholder="Ex: 15.00" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-stone-500 mb-1 text-moriah-green font-bold">Venda (R$)</label>
+                                    <input type="number" step="0.01" name="price" value={formData.price} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-emerald-200 bg-emerald-50 rounded-xl outline-none text-emerald-900 font-bold text-lg" placeholder="Ex: 45.00" />
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Físico</label>
+                                    <input type="number" name="stock" value={formData.stock} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Min.</label>
+                                    <input type="number" name="minStock" value={formData.minStock} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 border-t border-stone-100 pt-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-stone-500 mb-1">Peso (Gramas)</label>
+                                    <input type="number" name="weight_grams" placeholder="Ex: 250" value={formData.weight_grams} onChange={handleChange} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
+                                </div>
+                                <div class="flex items-center mt-4 text-left">
+                                    <label class="flex items-center gap-3 cursor-pointer p-2 bg-stone-50 border border-stone-100 rounded-xl w-full">
+                                        <input type="checkbox" name="sell_online" checked={formData.sell_online === 1} onChange={handleChange} class="w-5 h-5 text-moriah-brown bg-white border-stone-300 rounded focus:ring-moriah-brown" />
+                                        <span class="text-sm font-bold text-stone-700">Vender no E-commerce? <br /><span class="text-[10px] font-normal text-stone-400">Ative para aparecer na loja online</span></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="flex gap-4 pt-4">
+                                <button type="button" onClick={() => { setEditingProduct(null); setView('inventory'); }} class="flex-1 py-3 text-stone-500 font-bold hover:bg-stone-50 rounded-2xl transition-all border border-stone-200">Cancelar</button>
+                                <button type="submit" class="flex-1 py-3 bg-moriah-brown text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all">{isEdit ? 'Salvar' : 'Cadastrar'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
         const App = () => {
             const [view, setView] = useState('pos');
             const [products, setProducts] = useState([]);
@@ -189,6 +454,28 @@
             const [editingProduct, setEditingProduct] = useState(null);
             const [periodFilter, setPeriodFilter] = useState('always');
             const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+            const [siteSettings, setSiteSettings] = useState({
+                hero_title: '', hero_subtitle: '', hero_text: '', hero_video: '',
+                about_title: '', about_subtitle: '', about_text_1: '', about_text_2: '', about_image: ''
+            });
+            const [videoFile, setVideoFile] = useState(null);
+            const [imageFile, setImageFile] = useState(null);
+
+            // Carrega configurações do site ao abrir a aba (ou no início)
+            useEffect(() => {
+                fetch('http://localhost:3000/api/site-settings')
+                    .then(res => res.json())
+                    .then(data => {
+                        const sanitizedAdminData = {};
+                        if (data) {
+                            Object.keys(data).forEach(key => {
+                                sanitizedAdminData[key] = data[key] || '';
+                            });
+                            setSiteSettings(sanitizedAdminData);
+                        }
+                    })
+                    .catch(err => console.error("Erro config site:", err));
+            }, []);
 
             const initialUsers = [
                 { id: 1, name: 'Administrador', username: 'admin', password: 'root' }
@@ -678,130 +965,14 @@
                         );
                     }
                     case 'add_product':
-                    case 'edit_product': {
-                        const isEdit = view === 'edit_product';
-                        return (
-                            <div class="max-w-2xl mx-auto bg-white p-8 rounded-3xl shadow-lg border border-stone-100 animate-in zoom-in-95 duration-300">
-                                <h2 class="text-2xl font-bold mb-6">{isEdit ? 'Editar Produto' : 'Novo Produto'}</h2>
-                                <div class="grid grid-cols-1 gap-8">
-
-
-                                    <form class="space-y-4" onSubmit={async (e) => {
-                                        e.preventDefault();
-                                        const formData = new FormData(e.target);
-                                        const productData = {
-                                            name: formData.get('name'),
-                                            category: formData.get('category'),
-                                            cost: parseFloat(formData.get('cost')),
-                                            price: parseFloat(formData.get('price')),
-                                            stock: parseInt(formData.get('stock')),
-                                            minStock: parseInt(formData.get('minStock')),
-                                            sku: formData.get('sku'),
-                                            image_url: formData.get('image_url') || '',
-                                            description: formData.get('description'),
-                                            weight_grams: parseInt(formData.get('weight_grams')) || 250,
-                                            sell_online: formData.get('sell_online') === 'on' ? 1 : 0
-                                        };
-
-                                        try {
-                                            let res;
-                                            if (isEdit) {
-                                                res = await fetch(`http://localhost:3000/api/products/${editingProduct.id}`, {
-                                                    method: 'PUT',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify(productData)
-                                                });
-                                            } else {
-                                                res = await fetch('http://localhost:3000/api/products', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify(productData)
-                                                });
-                                            }
-
-                                            if (res.ok) {
-                                                // Recarrega todos os produtos do DB
-                                                const reload = await fetch('http://localhost:3000/api/products');
-                                                const newData = await reload.json();
-                                                setProducts(newData);
-
-                                                setEditingProduct(null);
-                                                setView('inventory');
-                                            } else {
-                                                alert("Erro ao salvar o produto.");
-                                            }
-                                        } catch (error) {
-                                            console.error("Erro no processamento:", error);
-                                            alert("Erro de conexão com o servidor.");
-                                        }
-                                    }}>
-                                        <div>
-                                            <label class="block text-sm font-medium text-stone-500 mb-1">Nome</label>
-                                            <input name="name" defaultValue={isEdit ? editingProduct.name : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-moriah-brown/50 outline-none" />
-                                        </div>
-                                        <div class="grid grid-cols-1 gap-4">
-                                            <div>
-                                                <label class="block text-sm font-medium text-stone-500 mb-1">SKU / Barcode</label>
-                                                <input name="sku" defaultValue={isEdit ? editingProduct.sku : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-sm font-medium text-stone-500 mb-1">Categoria</label>
-                                                <select name="category" defaultValue={isEdit ? editingProduct.category : 'Café'} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none">
-                                                    <option>Café Grão</option>
-                                                    <option>Café Moído</option>
-                                                    <option>Acessórios</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-stone-500 mb-1">URL da Imagem</label>
-                                            <input name="image_url" placeholder="https://exemplo.com/foto.jpg" defaultValue={isEdit ? editingProduct.image_url : ''} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-stone-500 mb-1">Descrição do Produto (Site)</label>
-                                            <textarea name="description" rows="3" class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-moriah-brown/50 outline-none">{isEdit ? editingProduct.description : ''}</textarea>
-                                        </div>
-                                        <div class="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
-                                                <input type="number" step="0.01" name="cost" defaultValue={isEdit ? editingProduct.cost : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-sm font-medium text-stone-500 mb-1">Venda (R$)</label>
-                                                <input type="number" step="0.01" name="price" defaultValue={isEdit ? editingProduct.price : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                            </div>
-                                        </div>
-                                        <div class="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Físico</label>
-                                                <input type="number" name="stock" defaultValue={isEdit ? editingProduct.stock : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                            </div>
-                                            <div>
-                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Min.</label>
-                                                <input type="number" name="minStock" defaultValue={isEdit ? editingProduct.minStock : ''} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                            </div>
-                                        </div>
-                                        <div class="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label class="block text-sm font-medium text-stone-500 mb-1">Peso (Gramas)</label>
-                                                <input type="number" name="weight_grams" placeholder="Ex: 250" defaultValue={isEdit ? editingProduct.weight_grams : '250'} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                            </div>
-                                            <div class="flex items-center mt-4">
-                                                <label class="flex items-center gap-2 cursor-pointer">
-                                                    <input type="checkbox" name="sell_online" defaultChecked={isEdit ? editingProduct.sell_online == 1 : true} class="w-5 h-5 text-moriah-brown bg-stone-100 border-stone-300 rounded focus:ring-moriah-brown" />
-                                                    <span class="text-sm font-bold text-stone-700">Vender no E-commerce?</span>
-                                                </label>
-                                            </div>
-                                        </div>
-                                        <div class="flex gap-4 pt-4">
-                                            <button type="button" onClick={() => { setEditingProduct(null); setView('inventory'); }} class="flex-1 py-3 text-stone-500 font-bold hover:bg-stone-50 rounded-2xl transition-all">Cancelar</button>
-                                            <button type="submit" class="flex-1 py-3 bg-moriah-brown text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all">{isEdit ? 'Salvar' : 'Cadastrar'}</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        );
-                    }
+                    case 'edit_product':
+                        return <ProductForm
+                            isEdit={view === 'edit_product'}
+                            editingProduct={editingProduct}
+                            setProducts={setProducts}
+                            setEditingProduct={setEditingProduct}
+                            setView={setView}
+                        />;
 
                     case 'login': {
                         return (
@@ -833,6 +1004,146 @@
                                     </form>
                                     <div class="mt-8 text-stone-400 text-sm italic">Acesso restrito. Contate o administrador para novos acessos.</div>
                                 </div>
+                            </div>
+                        );
+                    }
+                    case 'site_settings': {
+                        return (
+                            <div class="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 text-stone-900">
+                                <div class="flex justify-between items-center"><h2 class="text-2xl font-bold">Conteúdo do E-commerce</h2></div>
+
+                                <form onSubmit={async (e) => {
+                                    e.preventDefault();
+
+                                    const formData = new FormData();
+
+                                    // Adicionando varáveis de estado textuais evitando Undefined/nulos
+                                    Object.keys(siteSettings).forEach(key => formData.append(key, siteSettings[key] || ''));
+
+                                    // Adicionando arquivos caso selecionados
+                                    if (videoFile) formData.append('hero_video_file', videoFile);
+                                    if (imageFile) formData.append('about_image_file', imageFile);
+
+                                    try {
+                                        const res = await fetch('http://localhost:3000/api/site-settings', {
+                                            method: 'PUT',
+                                            body: formData
+                                        });
+                                        if (res.ok) {
+                                            alert('Conteúdo atualizado com sucesso no site!');
+                                            const resData = await res.json();
+                                            setSiteSettings(prev => ({
+                                                ...prev,
+                                                hero_video: resData.hero_video || prev.hero_video,
+                                                about_image: resData.about_image || prev.about_image
+                                            }));
+
+                                            // Limpa states para não enviar form de novo e reseta formulário DOM
+                                            setVideoFile(null);
+                                            setImageFile(null);
+                                            e.target.reset();
+                                        }
+                                        else alert('Erro ao atualizar configurações.');
+                                    } catch (err) {
+                                        alert('Erro de conexão ao salvar.');
+                                    }
+                                }} class="space-y-6">
+
+                                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                        <h3 class="font-bold text-lg mb-4 text-moriah-brown">Apresentação Principal (Hero/Vídeo)</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 flex items-center justify-between mb-1 block">
+                                                    <span>Título</span>
+                                                    <span class="text-moriah-orange font-normal normal-case">Dica: Aperte 'Enter' para pular de linha!</span>
+                                                </label>
+                                                <textarea rows="3" value={siteSettings.hero_title || ''} onChange={e => setSiteSettings({ ...siteSettings, hero_title: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl placeholder-stone-400" placeholder="Ex:&#10;Seu momento MORIAH&#10;tá te esperando."></textarea>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Texto Descritivo</label>
+                                                <textarea rows="2" value={siteSettings.hero_text || ''} onChange={e => setSiteSettings({ ...siteSettings, hero_text: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl"></textarea>
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Alinhamento do Texto</label>
+                                                <select value={siteSettings.hero_text_align || 'text-center'} onChange={e => setSiteSettings({ ...siteSettings, hero_text_align: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl text-sm">
+                                                    <option value="text-left">Esquerda</option>
+                                                    <option value="text-center">Centro</option>
+                                                    <option value="text-right">Direita</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 flex justify-between mb-1 block">
+                                                    <span>Opacidade Escura do Vídeo</span>
+                                                    <span>{siteSettings.hero_video_opacity || '0.6'}</span>
+                                                </label>
+                                                <input type="range" min="0" max="1" step="0.1" value={siteSettings.hero_video_opacity || 0.6} onChange={e => setSiteSettings({ ...siteSettings, hero_video_opacity: e.target.value })} class="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer mt-3" />
+                                                <p class="text-[10px] text-stone-400 mt-2">Dita o quanto o vídeo será escurecido.</p>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">URL do Vídeo de Fundo (MP4)</label>
+                                                <div class="flex flex-col gap-2">
+                                                    <input value={siteSettings.hero_video || ''} onChange={e => setSiteSettings({ ...siteSettings, hero_video: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="Link externo (opcional)" />
+
+                                                    <div class="relative w-full">
+                                                        <input type="file" name="hero_video_file" accept=".mp4,video/*" onChange={(e) => setVideoFile(e.target.files[0])} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                        <div class="w-full px-4 py-3 bg-stone-100 border border-stone-200 border-dashed rounded-xl flex items-center justify-center gap-2 text-stone-500 hover:bg-stone-200 transition">
+                                                            <LucideIcon name="upload" className="w-4 h-4" />
+                                                            <span class="text-sm font-medium">{videoFile ? `Arquivo: ${videoFile.name}` : 'Fazer Upload de Arquivo MP4'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <p class="text-[10px] text-stone-400 mt-1">Ao fazer o upload enviando o botão 'Atualizar', a URL acima será substituída.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                        <h3 class="font-bold text-lg mb-4 text-moriah-brown">Seção: Nossa História</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Título da História</label>
+                                                <input value={siteSettings.about_title || ''} onChange={e => setSiteSettings({ ...siteSettings, about_title: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" />
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Parágrafo 1</label>
+                                                <textarea rows="3" value={siteSettings.about_text_1 || ''} onChange={e => setSiteSettings({ ...siteSettings, about_text_1: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl"></textarea>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Parágrafo 2</label>
+                                                <textarea rows="3" value={siteSettings.about_text_2 || ''} onChange={e => setSiteSettings({ ...siteSettings, about_text_2: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl"></textarea>
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Alinhamento do Foco da Foto</label>
+                                                <select value={siteSettings.about_image_align || 'object-center'} onChange={e => setSiteSettings({ ...siteSettings, about_image_align: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl text-sm">
+                                                    <option value="object-top">Topo da Imagem</option>
+                                                    <option value="object-center">Centro (Padrão)</option>
+                                                    <option value="object-bottom">Fundo da Imagem</option>
+                                                </select>
+                                                <p class="text-[10px] text-stone-400 mt-1">Previne cortes ruins em rostos no celular.</p>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Link da Imagem Ilustrativa</label>
+                                                <div class="flex flex-col gap-2">
+                                                    <input value={siteSettings.about_image || ''} onChange={e => setSiteSettings({ ...siteSettings, about_image: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="Link externo da foto (opcional)" />
+
+                                                    <div class="relative w-full">
+                                                        <input type="file" name="about_image_file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                        <div class="w-full px-4 py-3 bg-stone-100 border border-stone-200 border-dashed rounded-xl flex items-center justify-center gap-2 text-stone-500 hover:bg-stone-200 transition">
+                                                            <LucideIcon name="upload-cloud" className="w-4 h-4" />
+                                                            <span class="text-sm font-medium">{imageFile ? `Foto Selecionada: ${imageFile.name}` : 'Fazer Upload de Foto JPG/PNG'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {siteSettings.about_image && <img src={(siteSettings.about_image || '').startsWith('/') ? `http://localhost:3000${siteSettings.about_image}` : siteSettings.about_image} class="mt-2 text-stone-200 h-20 w-auto rounded border" alt="preview da historia" />}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <button type="submit" class="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl transition-all shadow-lg flex justify-center items-center gap-2">
+                                        <LucideIcon name="globe" className="w-5 h-5" /> Atualizar Loja Virtual
+                                    </button>
+
+                                </form>
                             </div>
                         );
                     }
@@ -954,7 +1265,8 @@
                             <SidebarItem onClick={() => setView('inventory')} active={view === 'inventory'} icon="package" label="Inventário" />
                             <SidebarItem onClick={() => setView('customers')} active={view === 'customers'} icon="users-round" label="Clientes" />
                             <SidebarItem onClick={() => setView('sales')} active={view === 'sales'} icon="file-text" label="Relatórios" />
-                            <SidebarItem onClick={() => setView('settings')} active={view === 'settings'} icon="settings" label="Configurações" />
+                            <SidebarItem onClick={() => setView('site_settings')} active={view === 'site_settings'} icon="store" label="Ecommerce CMS" />
+                            <SidebarItem onClick={() => setView('settings')} active={view === 'settings'} icon="settings" label="Sistema" />
                         </nav>
                         <div class="space-y-4">
                             <div class="p-4 bg-stone-50 rounded-2xl border border-stone-100">
