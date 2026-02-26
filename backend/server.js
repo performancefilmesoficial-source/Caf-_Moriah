@@ -59,95 +59,123 @@ Adquira já o seu e eleve o padrão do seu café diário.`;
     }
 });
 
-// Configuração da conexão com o Banco de Dados (SQLite Local)
-const db = new sqlite3.Database('./moriahpdv.sqlite', (err) => {
-    if (err) {
-        console.error('Erro ao conectar ao banco SQLite:', err.message);
+// Configuração Dinâmica de Banco de Dados (SQLite Local vs MySQL Cloud)
+let dbUtil;
+let sqliteDb;
+let isMysql = !!process.env.DATABASE_URL;
+
+async function setupDatabase() {
+    if (isMysql) {
+        const mysql = require('mysql2/promise');
+        console.log('Conectando ao MySQL na nuvem...');
+        const pool = mysql.createPool(process.env.DATABASE_URL);
+
+        dbUtil = {
+            query: async (sql, params = []) => {
+                // MySQL2 usa ? para params, igual ao sqlite3, mas mysql não suporta AUTOINCREMENT (é AUTO_INCREMENT) e DATETIME DEFAULT CURRENT_TIMESTAMP funciona normal.
+                const [rows] = await pool.query(sql, params);
+                return [rows];
+            },
+            run: async (sql, params = []) => {
+                const [result] = await pool.execute(sql, params);
+                return [{ insertId: result.insertId, changes: result.affectedRows }];
+            },
+            pool: pool
+        };
+
+        await initTables(dbUtil, true);
     } else {
-        console.log('Conexão SQLite (Localhost Portátil) estabelecida com sucesso!');
+        const sqlite3 = require('sqlite3').verbose();
+        console.log('Conectando ao SQLite local...');
+        sqliteDb = new sqlite3.Database('./moriahpdv.sqlite');
 
-        // Setup Inicial das Tabelas
-        db.run(`CREATE TABLE IF NOT EXISTS products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            category TEXT NOT NULL,
-            cost REAL NOT NULL,
-            price REAL NOT NULL,
-            stock INTEGER NOT NULL DEFAULT 0,
-            minStock INTEGER NOT NULL DEFAULT 5,
-            sku TEXT NOT NULL,
-            image_url TEXT,
-            description TEXT,
-            weight_grams INTEGER DEFAULT 250,
-            sell_online INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
+        dbUtil = {
+            query: (sql, params = []) => new Promise((resolve, reject) => {
+                sqliteDb.all(sql, params, (err, rows) => {
+                    if (err) reject(err);
+                    else resolve([rows]);
+                });
+            }),
+            run: (sql, params = []) => new Promise((resolve, reject) => {
+                sqliteDb.run(sql, params, function (err) {
+                    if (err) reject(err);
+                    else resolve([{ insertId: this.lastID, changes: this.changes }]);
+                });
+            }),
+            db: sqliteDb
+        };
 
-        db.run(`CREATE TABLE IF NOT EXISTS sales (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            total REAL NOT NULL,
-            method TEXT NOT NULL,
-            origin TEXT DEFAULT 'Físico',
-            status TEXT DEFAULT 'Concluído',
-            payment_id TEXT,
-            customer_phone TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`);
-
-        db.run(`CREATE TABLE IF NOT EXISTS sale_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sale_id INTEGER,
-            product_id INTEGER,
-            product_name TEXT,
-            quantity INTEGER,
-            price REAL,
-            FOREIGN KEY (sale_id) REFERENCES sales(id)
-        )`);
-
-        db.run(`CREATE TABLE IF NOT EXISTS site_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hero_title TEXT DEFAULT 'O Café dos Seus Sonhos',
-            hero_subtitle TEXT DEFAULT 'Experiência Sensorial',
-            hero_text TEXT DEFAULT 'Grãos selecionados das melhores origens do Brasil, torrados artesanalmente para despertar todos os seus sentidos.',
-            hero_video TEXT DEFAULT 'https://cdn.pixabay.com/video/2016/06/17/3494-171876527_large.mp4',
-            about_title TEXT DEFAULT 'Descubra Nossa História',
-            about_subtitle TEXT DEFAULT 'Tradição & Afeto',
-            about_text_1 TEXT DEFAULT 'Nascida do amor profundo pelos grãos especiais e do desejo de levar a autêntica experiência das fazendas brasileiras diretamente para a sua xícara. O Moriah Café é mais do que uma marca, é a celebração da nossa herança.',
-            about_text_2 TEXT DEFAULT 'Trabalhamos lado a lado com pequenos produtores, garantindo grãos de origem controlada e qualidade máxima. Nossa torra, feita de forma minuciosa e artesanal, respeita o tempo de cada variedade para extrair as melhores notas e aromas.',
-            about_image TEXT DEFAULT 'https://images.unsplash.com/photo-1611162458324-aae1eb4129a4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80',
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )`, () => {
-            // Insere um registro default se a tabela estiver vazia
-            db.get("SELECT COUNT(*) as count FROM site_settings", (err, row) => {
-                if (!err && row.count === 0) {
-                    db.run("INSERT INTO site_settings (hero_title) VALUES ('O Café dos Seus Sonhos')");
-                }
-            });
-        });
+        await initTables(dbUtil, false);
     }
-});
+}
 
-// Wrapper de Promises para o SQLite3
-const dbUtil = {
-    query: (sql, params = []) => new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => {
-            if (err) reject(err);
-            else resolve([rows]); // Mimetiza o [rows] do db2/promise
-        });
-    }),
-    run: (sql, params = []) => new Promise((resolve, reject) => {
-        db.run(sql, params, function (err) {
-            if (err) reject(err);
-            else resolve([{ insertId: this.lastID, changes: this.changes }]);
-        });
-    })
-};
+async function initTables(dbUtil, isMysql) {
+    const autoInc = isMysql ? 'AUTO_INCREMENT' : 'AUTOINCREMENT';
 
-// Conexão e criação das tabelas feitas na inicialização acima.
+    await dbUtil.run(`CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY ${autoInc},
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        cost REAL NOT NULL,
+        price REAL NOT NULL,
+        stock INTEGER NOT NULL DEFAULT 0,
+        minStock INTEGER NOT NULL DEFAULT 5,
+        sku TEXT NOT NULL,
+        image_url TEXT,
+        description TEXT,
+        weight_grams INTEGER DEFAULT 250,
+        sell_online INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    await dbUtil.run(`CREATE TABLE IF NOT EXISTS sales (
+        id INTEGER PRIMARY KEY ${autoInc},
+        total REAL NOT NULL,
+        method TEXT NOT NULL,
+        origin TEXT DEFAULT 'Físico',
+        status TEXT DEFAULT 'Concluído',
+        payment_id TEXT,
+        customer_phone TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // FOREIGN KEY funciona em ambos
+    await dbUtil.run(`CREATE TABLE IF NOT EXISTS sale_items (
+        id INTEGER PRIMARY KEY ${autoInc},
+        sale_id INTEGER,
+        product_id INTEGER,
+        product_name TEXT,
+        quantity INTEGER,
+        price REAL
+    )`);
+
+    await dbUtil.run(`CREATE TABLE IF NOT EXISTS site_settings (
+        id INTEGER PRIMARY KEY ${autoInc},
+        hero_title TEXT DEFAULT 'O Café dos Seus Sonhos',
+        hero_subtitle TEXT DEFAULT 'Experiência Sensorial',
+        hero_text TEXT DEFAULT 'Grãos selecionados das melhores origens do Brasil, torrados artesanalmente para despertar todos os seus sentidos.',
+        hero_video TEXT DEFAULT 'https://cdn.pixabay.com/video/2016/06/17/3494-171876527_large.mp4',
+        about_title TEXT DEFAULT 'Descubra Nossa História',
+        about_subtitle TEXT DEFAULT 'Tradição & Afeto',
+        about_text_1 TEXT DEFAULT 'Nascida do amor profundo pelos grãos especiais e do desejo de levar a autêntica experiência das fazendas brasileiras diretamente para a sua xícara. O Moriah Café é mais do que uma marca, é a celebração da nossa herança.',
+        about_text_2 TEXT DEFAULT 'Trabalhamos lado a lado com pequenos produtores, garantindo grãos de origem controlada e qualidade máxima. Nossa torra, feita de forma minuciosa e artesanal, respeita o tempo de cada variedade para extrair as melhores notas e aromas.',
+        about_image TEXT DEFAULT 'https://images.unsplash.com/photo-1611162458324-aae1eb4129a4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    const [rows] = await dbUtil.query("SELECT COUNT(*) as count FROM site_settings");
+    if (rows[0].count === 0) {
+        await dbUtil.run("INSERT INTO site_settings (hero_title) VALUES ('O Café dos Seus Sonhos')");
+    }
+}
+
+// Inicializa os bancos antes das rotas
+setupDatabase().catch(console.error);
 
 // ==========================================
 // ROTAS DA API
 // ==========================================
+
 
 // Rota de Teste para verificar se a API está online
 app.get('/api/health', (req, res) => {
@@ -356,10 +384,9 @@ app.get('/api/sales', async (req, res) => {
 app.post('/api/sales', async (req, res) => {
     const { seller, items, subtotal, discount, total, method, origin, customer_phone } = req.body;
 
-    // Usando serialização nativa do SQLite para garantir consistência
-    db.serialize(async () => {
+    (async () => {
         try {
-            db.run('BEGIN TRANSACTION');
+            await dbUtil.run(process.env.DATABASE_URL ? 'START TRANSACTION' : 'BEGIN TRANSACTION');
 
             // 1. Salva a venda principal
             const result = await dbUtil.run(
@@ -381,14 +408,14 @@ app.post('/api/sales', async (req, res) => {
                 );
             }
 
-            db.run('COMMIT');
+            await dbUtil.run('COMMIT');
             res.status(201).json({ id: saleId, message: 'Venda finalizada com sucesso!' });
         } catch (error) {
-            db.run('ROLLBACK');
+            await dbUtil.run('ROLLBACK');
             console.error(error);
             res.status(500).json({ error: 'Erro ao finalizar venda. Transação desfeita.' });
         }
-    });
+    })();
 });
 
 // ---- USUÁRIOS (Autenticação simples) ----
@@ -495,9 +522,9 @@ app.post('/api/checkout', async (req, res) => {
         }
 
         // 4. Salvar venda no Banco de Dados local como Pendente
-        db.serialize(async () => {
+        (async () => {
             try {
-                db.run('BEGIN TRANSACTION');
+                await dbUtil.run(process.env.DATABASE_URL ? 'START TRANSACTION' : 'BEGIN TRANSACTION');
 
                 const result = await dbUtil.run(
                     'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id) VALUES (?, ?, ?, ?, ?, ?)',
@@ -517,12 +544,12 @@ app.post('/api/checkout', async (req, res) => {
                     );
                 }
 
-                db.run('COMMIT');
+                await dbUtil.run('COMMIT');
             } catch (dbErr) {
-                db.run('ROLLBACK');
-                console.error("Erro ao salvar no banco local:", dbErr);
+                await dbUtil.run('ROLLBACK');
+                console.error("Erro ao salvar no banco:", dbErr);
             }
-        });
+        })();
 
         // Retornar Sucesso e Dados do Pix para o Frontend
         res.status(200).json({
