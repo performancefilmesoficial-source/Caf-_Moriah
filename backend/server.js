@@ -8,7 +8,7 @@ const csv = require('csv-parser');
 const axios = require('axios');
 require('dotenv').config();
 
-const ASAAS_API_KEY = '$aact_prod_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OjFlMDRmNTY2LTdkYTQtNDAxYy04YmRhLTVjYmJiMjMyZjM4Njo6JGFhY2hfYjUzNTgyZTktZmY1ZS00NmEzLWJkZDQtZWRkZjYwYjNiYjdh';
+const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
 const ASAAS_URL = 'https://api.asaas.com/v3';
 
 const upload = multer({ dest: 'uploads/' });
@@ -87,6 +87,9 @@ const db = new sqlite3.Database('./moriahpdv.sqlite', (err) => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             total REAL NOT NULL,
             method TEXT NOT NULL,
+            origin TEXT DEFAULT 'Físico',
+            status TEXT DEFAULT 'Concluído',
+            payment_id TEXT,
             customer_phone TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
@@ -302,10 +305,10 @@ app.put('/api/site-settings', upload.fields([{ name: 'hero_video_file', maxCount
     // Se vieram arquivos anexados, atualize as variáveis para pegar o caminho do multer:
     if (req.files) {
         if (req.files['hero_video_file'] && req.files['hero_video_file'][0]) {
-            hero_video = `http://localhost:3000/uploads/${req.files['hero_video_file'][0].filename}`;
+            hero_video = `/uploads/${req.files['hero_video_file'][0].filename}`;
         }
         if (req.files['about_image_file'] && req.files['about_image_file'][0]) {
-            about_image = `http://localhost:3000/uploads/${req.files['about_image_file'][0].filename}`;
+            about_image = `/uploads/${req.files['about_image_file'][0].filename}`;
         }
     }
 
@@ -351,7 +354,7 @@ app.get('/api/sales', async (req, res) => {
 
 // 2. Finalizar uma venda
 app.post('/api/sales', async (req, res) => {
-    const { seller, items, subtotal, discount, total, method, customer_phone } = req.body;
+    const { seller, items, subtotal, discount, total, method, origin, customer_phone } = req.body;
 
     // Usando serialização nativa do SQLite para garantir consistência
     db.serialize(async () => {
@@ -360,8 +363,8 @@ app.post('/api/sales', async (req, res) => {
 
             // 1. Salva a venda principal
             const result = await dbUtil.run(
-                'INSERT INTO sales (total, method, customer_phone) VALUES (?, ?, ?)',
-                [total, method, customer_phone]
+                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id) VALUES (?, ?, ?, ?, ?, ?)',
+                [total, method, origin || 'Físico', 'Concluído', customer_phone, null]
             );
             const saleId = result[0].insertId;
 
@@ -491,6 +494,36 @@ app.post('/api/checkout', async (req, res) => {
             console.error(mailErr);
         }
 
+        // 4. Salvar venda no Banco de Dados local como Pendente
+        db.serialize(async () => {
+            try {
+                db.run('BEGIN TRANSACTION');
+
+                const result = await dbUtil.run(
+                    'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id) VALUES (?, ?, ?, ?, ?, ?)',
+                    [totalAmount, 'PIX', 'Online', 'Pendente', customerCpf, paymentId]
+                );
+                const saleId = result[0].insertId;
+
+                for (const item of cartItems) {
+                    await dbUtil.run(
+                        'INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                        [saleId, item.id, item.name, item.quantity, item.price]
+                    );
+
+                    await dbUtil.run(
+                        'UPDATE products SET stock = stock - ? WHERE id = ?',
+                        [item.quantity, item.id]
+                    );
+                }
+
+                db.run('COMMIT');
+            } catch (dbErr) {
+                db.run('ROLLBACK');
+                console.error("Erro ao salvar no banco local:", dbErr);
+            }
+        });
+
         // Retornar Sucesso e Dados do Pix para o Frontend
         res.status(200).json({
             success: true,
@@ -508,6 +541,27 @@ app.post('/api/checkout', async (req, res) => {
 });
 
 const path = require('path');
+
+// 3. Webhook do Asaas para Pagamento de PIX
+app.post('/api/webhook/asaas', async (req, res) => {
+    try {
+        const { event, payment } = req.body;
+        // Asaas envia PAYMENT_RECEIVED ou PAYMENT_CONFIRMED quando é pago
+        if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
+            const paymentId = payment.id;
+            await dbUtil.run(
+                "UPDATE sales SET status = 'Concluído' WHERE payment_id = ?",
+                [paymentId]
+            );
+            console.log('Venda confirmada via Webhook Asaas. ID:', paymentId);
+        }
+        res.status(200).json({ received: true });
+    } catch (error) {
+        console.error('Erro no Webhook Asaas:', error);
+        res.status(500).json({ error: 'Erro processando webhook' });
+    }
+});
+
 // Servir arquivos estáticos do frontend
 app.use(express.static(path.join(__dirname, '../')));
 

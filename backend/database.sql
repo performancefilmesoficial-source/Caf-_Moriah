@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS sales (
     discount DECIMAL(5, 2) DEFAULT 0,
     total DECIMAL(10, 2) NOT NULL,
     method VARCHAR(100) NOT NULL,
+    origin VARCHAR(50) DEFAULT 'Físico',
+    status VARCHAR(50) DEFAULT 'Concluído',
+    payment_id VARCHAR(255),
     date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

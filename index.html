@@ -193,7 +193,7 @@
                 }
                 setIsGeneratingAI(field);
                 try {
-                    const res = await fetch('http://localhost:3000/api/generate-ai', {
+                    const res = await fetch('/api/generate-ai', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ productName: formData.name })
@@ -224,13 +224,13 @@
                     const uploadData = new FormData();
                     uploadData.append('image', file);
                     try {
-                        const res = await fetch('http://localhost:3000/api/upload', {
+                        const res = await fetch('/api/upload', {
                             method: 'POST',
                             body: uploadData
                         });
                         const data = await res.json();
                         if (res.ok) {
-                            newUrls.push(`http://localhost:3000${data.imageUrl}`);
+                            newUrls.push(`${data.imageUrl}`);
                         } else throw new Error(data.error);
                     } catch (e) {
                         alert(`Erro ao enviar imagem ${file.name}: ` + e.message);
@@ -276,13 +276,13 @@
                             try {
                                 let res;
                                 if (isEdit) {
-                                    res = await fetch(`http://localhost:3000/api/products/${editingProduct.id}`, {
+                                    res = await fetch(`/api/products/${editingProduct.id}`, {
                                         method: 'PUT',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify(productData)
                                     });
                                 } else {
-                                    res = await fetch('http://localhost:3000/api/products', {
+                                    res = await fetch('/api/products', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify(productData)
@@ -290,7 +290,7 @@
                                 }
 
                                 if (res.ok) {
-                                    const reload = await fetch('http://localhost:3000/api/products');
+                                    const reload = await fetch('/api/products');
                                     const newData = await reload.json();
                                     setProducts(newData);
                                     setEditingProduct(null);
@@ -427,7 +427,7 @@
             useEffect(() => {
                 const fetchProducts = async () => {
                     try {
-                        const res = await fetch('http://localhost:3000/api/products');
+                        const res = await fetch('/api/products');
                         if (res.ok) {
                             const data = await res.json();
                             setProducts(data);
@@ -453,6 +453,7 @@
             const [customerPhone, setCustomerPhone] = useState('');
             const [editingProduct, setEditingProduct] = useState(null);
             const [periodFilter, setPeriodFilter] = useState('always');
+            const [originFilter, setOriginFilter] = useState('all'); // all, fisico, online
             const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
             const [siteSettings, setSiteSettings] = useState({
                 hero_title: '', hero_subtitle: '', hero_text: '', hero_video: '',
@@ -463,7 +464,7 @@
 
             // Carrega configurações do site ao abrir a aba (ou no início)
             useEffect(() => {
-                fetch('http://localhost:3000/api/site-settings')
+                fetch('/api/site-settings')
                     .then(res => res.json())
                     .then(data => {
                         const sanitizedAdminData = {};
@@ -587,6 +588,7 @@
                     discount,
                     total,
                     method,
+                    origin: 'Físico', // Como esse é o PDV presencial, sempre é 'Físico'
                     date: new Date().toISOString()
                 };
 
@@ -619,7 +621,7 @@
             const deleteProduct = async (id) => {
                 if (confirm('Tem certeza que deseja excluir este produto?')) {
                     try {
-                        const res = await fetch(`http://localhost:3000/api/products/${id}`, { method: 'DELETE' });
+                        const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
                         if (res.ok) {
                             setProducts(curr => curr.filter(p => p.id !== id));
                         }
@@ -784,26 +786,25 @@
                             )}
 
                             {isPixModalOpen && (
-                                <div class="fixed inset-0 bg-moriah-brown/90 backdrop-blur-md z-[60] flex items-center justify-center p-4 text-stone-900">
-                                    <div class="bg-white w-full max-w-sm rounded-[40px] shadow-2xl overflow-hidden p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
-                                        <div class="w-16 h-1 bg-stone-100 rounded-full mb-6"></div>
-                                        <div class="p-4 bg-teal-50 rounded-2xl mb-4"><LucideIcon name="qr-code" className="w-8 h-8 text-teal-600" /></div>
-                                        <h3 class="text-2xl font-black mb-2 text-stone-900">Pagamento via PIX</h3>
-                                        <p class="text-stone-500 text-sm mb-6">Peça ao cliente para escanear o código abaixo ou use o Copia e Cola.</p>
-                                        <div class="bg-white p-4 rounded-3xl border-4 border-stone-50 mb-6 shadow-inner">
-                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(currentPixData.payload)}`} class="w-48 h-48" alt="PIX QR Code" />
+                                <div class="fixed inset-0 bg-moriah-brown/90 backdrop-blur-md z-[60] flex items-center justify-center p-4 md:p-8 text-stone-900">
+                                    <div class="bg-white w-[90%] md:w-full max-w-xs md:max-w-sm rounded-[24px] md:rounded-[40px] shadow-2xl overflow-y-auto max-h-[90vh] p-4 md:p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                                        <div class="p-2 md:p-3 bg-teal-50 rounded-xl md:rounded-2xl mb-2 md:mb-3"><LucideIcon name="qr-code" className="w-5 h-5 md:w-6 md:h-6 text-teal-600" /></div>
+                                        <h3 class="text-lg md:text-2xl font-black mb-1 md:mb-2 text-stone-900">Pagamento via PIX</h3>
+                                        <p class="text-stone-500 text-[10px] md:text-xs mb-3 md:mb-4 px-2">Peça ao cliente para escanear o código abaixo ou use o Copia e Cola.</p>
+                                        <div class="bg-white p-2 md:p-3 rounded-xl md:rounded-3xl border-2 md:border-4 border-stone-50 mb-3 md:mb-4 shadow-inner flex-shrink-0">
+                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(currentPixData.payload)}`} class="w-28 h-28 md:w-40 md:h-40 object-contain" alt="PIX QR Code" />
                                         </div>
-                                        <div class="w-full space-y-4">
-                                            <div class="p-4 bg-stone-50 rounded-2xl border border-stone-100 text-left">
-                                                <p class="text-[10px] uppercase font-bold text-stone-400 mb-1">Copia e Cola</p>
+                                        <div class="w-full space-y-2 md:space-y-3">
+                                            <div class="p-2 md:p-3 bg-stone-50 rounded-xl border border-stone-100 text-left">
+                                                <p class="text-[9px] md:text-[10px] uppercase font-bold text-stone-400 mb-0.5 md:mb-1">Copia e Cola</p>
                                                 <div class="flex items-center gap-2">
-                                                    <code class="text-xs text-stone-600 truncate flex-1">{currentPixData.payload}</code>
-                                                    <button onClick={() => { navigator.clipboard.writeText(currentPixData.payload); alert('Código copiado!'); }} class="p-2 hover:bg-stone-200 rounded-lg transition-colors"><LucideIcon name="copy" className="w-4 h-4 text-moriah-brown" /></button>
+                                                    <code class="text-[9px] md:text-xs text-stone-600 truncate flex-1">{currentPixData.payload}</code>
+                                                    <button onClick={() => { navigator.clipboard.writeText(currentPixData.payload); alert('Código copiado!'); }} class="p-1.5 md:p-2 hover:bg-stone-200 rounded-lg transition-colors"><LucideIcon name="copy" className="w-3 h-3 md:w-4 md:h-4 text-moriah-brown" /></button>
                                                 </div>
                                             </div>
-                                            <div class="text-2xl font-black text-teal-600 mb-2">R$ {currentPixData.total.toFixed(2)}</div>
-                                            <button onClick={() => finalizeSale('PIX')} class="w-full py-4 bg-moriah-brown text-white rounded-2xl font-black text-lg hover:bg-moriah-dark transition-all shadow-lg active:scale-95">Confirmar Pagamento</button>
-                                            <button onClick={() => setIsPixModalOpen(false)} class="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Voltar</button>
+                                            <div class="text-lg md:text-2xl font-black text-teal-600 mb-1 md:mb-2">R$ {currentPixData.total.toFixed(2)}</div>
+                                            <button onClick={() => finalizeSale('PIX')} class="w-full py-2.5 md:py-4 bg-moriah-brown text-white rounded-xl md:rounded-2xl font-black text-sm md:text-lg hover:bg-moriah-dark transition-all shadow-lg active:scale-95">Confirmar Pagamento</button>
+                                            <button onClick={() => setIsPixModalOpen(false)} class="w-full py-1.5 md:py-2 text-stone-400 font-bold hover:text-stone-600 text-[10px] md:text-base">Voltar</button>
                                         </div>
                                     </div>
                                 </div>
@@ -851,14 +852,14 @@
                                             // Loading states could be added here
                                             alert('Importando produtos, aguarde...');
                                             try {
-                                                const res = await fetch('http://localhost:3000/api/products/import', { method: 'POST', body: formData });
+                                                const res = await fetch('/api/products/import', { method: 'POST', body: formData });
                                                 const data = await res.json();
 
                                                 alert(data.message || data.error || 'Erro desconhecido');
 
                                                 if (res.ok) {
                                                     // Atualiza a tabela chamando a API de produtos novamente
-                                                    const reload = await fetch('http://localhost:3000/api/products');
+                                                    const reload = await fetch('/api/products');
                                                     setProducts(await reload.json());
                                                 }
                                             } catch (err) {
@@ -910,23 +911,42 @@
                         const filteredSales = sales.filter(s => {
                             const saleDate = new Date(s.date);
                             const now = new Date();
-                            if (periodFilter === 'day') return saleDate.toDateString() === now.toDateString();
-                            if (periodFilter === 'week') { const diff = now - saleDate; return diff <= 7 * 24 * 60 * 60 * 1000; }
-                            if (periodFilter === 'month') return saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
-                            return true;
+
+                            // Filtro de Data
+                            let dateMatch = true;
+                            if (periodFilter === 'day') dateMatch = saleDate.toDateString() === now.toDateString();
+                            else if (periodFilter === 'week') { const diff = now - saleDate; dateMatch = diff <= 7 * 24 * 60 * 60 * 1000; }
+                            else if (periodFilter === 'month') dateMatch = saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
+
+                            // Filtro de Origem
+                            let originMatch = true;
+                            const saleOrigin = s.origin || 'Físico'; // Fallback para vendas antigas
+                            if (originFilter === 'fisico') originMatch = saleOrigin === 'Físico';
+                            else if (originFilter === 'online') originMatch = saleOrigin === 'Online';
+
+                            return dateMatch && originMatch;
                         });
                         return (
                             <div class="space-y-6 animate-in fade-in duration-500 text-stone-900">
                                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
                                     <h2 class="text-2xl font-bold">Relatório de Vendas</h2>
-                                    <div class="flex flex-wrap gap-2 w-full sm:w-auto">
-                                        <div class="flex bg-stone-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto no-scrollbar">
-                                            <button onClick={() => setPeriodFilter('day')} class={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'day' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Hoje</button>
-                                            <button onClick={() => setPeriodFilter('week')} class={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'week' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Semana</button>
-                                            <button onClick={() => setPeriodFilter('month')} class={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'month' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Mês</button>
-                                            <button onClick={() => setPeriodFilter('always')} class={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'always' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Tudo</button>
+                                    <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                                        <div class="flex flex-wrap gap-2">
+                                            <div class="flex bg-stone-100 p-1 rounded-xl overflow-x-auto no-scrollbar">
+                                                <button onClick={() => setPeriodFilter('day')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'day' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Hoje</button>
+                                                <button onClick={() => setPeriodFilter('week')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'week' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Semana</button>
+                                                <button onClick={() => setPeriodFilter('month')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'month' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Mês</button>
+                                                <button onClick={() => setPeriodFilter('always')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'always' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Tudo</button>
+                                            </div>
                                         </div>
-                                        <button onClick={() => window.print()} class="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-moriah-brown text-white px-6 py-2 rounded-xl hover:bg-moriah-dark transition-all shadow-lg"><LucideIcon name="printer" className="w-4 h-4" />Imprimir</button>
+                                        <div class="flex flex-wrap gap-2">
+                                            <div class="flex bg-stone-100 p-1 rounded-xl overflow-x-auto no-scrollbar">
+                                                <button onClick={() => setOriginFilter('all')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${originFilter === 'all' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Todas Origens</button>
+                                                <button onClick={() => setOriginFilter('fisico')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1 ${originFilter === 'fisico' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}><LucideIcon name="store" className="w-3 h-3" />Físico</button>
+                                                <button onClick={() => setOriginFilter('online')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1 ${originFilter === 'online' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}><LucideIcon name="globe" className="w-3 h-3" />Online</button>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => window.print()} class="flex items-center justify-center gap-2 bg-moriah-brown text-white px-6 py-2 rounded-xl hover:bg-moriah-dark transition-all shadow-lg hidden md:flex"><LucideIcon name="printer" className="w-4 h-4" />Imprimir</button>
                                     </div>
                                 </div>
                                 <div class="print-only hidden py-8 border-b-2 border-stone-200 mb-8">
@@ -938,13 +958,18 @@
                                     <div class="overflow-x-auto">
                                         <table class="w-full text-left min-w-[500px] md:min-w-0">
                                             <thead class="bg-stone-50 border-b border-stone-100 text-stone-500 font-medium">
-                                                <tr><th class="px-6 py-4">Vendedor / Data</th><th class="px-6 py-4 hidden sm:table-cell">Itens</th><th class="px-6 py-4">Método</th><th class="px-6 py-4 text-right">Total</th></tr>
+                                                <tr><th class="px-6 py-4">Vendedor / Data</th><th class="px-6 py-4 hidden sm:table-cell">Origem</th><th class="px-6 py-4 hidden sm:table-cell">Status</th><th class="px-6 py-4 hidden sm:table-cell">Itens</th><th class="px-6 py-4">Método</th><th class="px-6 py-4 text-right">Total</th></tr>
                                             </thead>
                                             <tbody class="divide-y divide-stone-50">
                                                 {filteredSales.map(s => (
                                                     <tr key={s.id}>
                                                         <td class="px-6 py-4">
                                                             <p class="font-bold">{s.seller || 'Sistema'}</p><p class="text-xs text-stone-400">{new Date(s.date).toLocaleString('pt-BR')}</p>
+                                                        </td>
+                                                        <td class="px-6 py-4 hidden sm:table-cell">
+                                                            <span class={`flex items-center gap-1 w-max px-2 py-1 rounded-md text-[10px] font-bold uppercase ${(!s.origin || s.origin === 'Físico') ? 'bg-stone-100 text-stone-600 border border-stone-200' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'}`}>
+                                                                <LucideIcon name={(!s.origin || s.origin === 'Físico') ? 'store' : 'globe'} className="w-3 h-3" /> {s.origin || 'Físico'}
+                                                            </span>
                                                         </td>
                                                         <td class="px-6 py-4 hidden sm:table-cell text-xs text-stone-600">{s.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</td>
                                                         <td class="px-6 py-4"><span class={`px-2 py-1 rounded text-[10px] font-bold uppercase ${s.method === 'Dinheiro' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{s.method}</span></td>
@@ -1025,7 +1050,7 @@
                                     if (imageFile) formData.append('about_image_file', imageFile);
 
                                     try {
-                                        const res = await fetch('http://localhost:3000/api/site-settings', {
+                                        const res = await fetch('/api/site-settings', {
                                             method: 'PUT',
                                             body: formData
                                         });
@@ -1134,7 +1159,7 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                {siteSettings.about_image && <img src={(siteSettings.about_image || '').startsWith('/') ? `http://localhost:3000${siteSettings.about_image}` : siteSettings.about_image} class="mt-2 text-stone-200 h-20 w-auto rounded border" alt="preview da historia" />}
+                                                {siteSettings.about_image && <img src={(siteSettings.about_image || '').startsWith('/') ? `${siteSettings.about_image}` : siteSettings.about_image} class="mt-2 text-stone-200 h-20 w-auto rounded border" alt="preview da historia" />}
                                             </div>
                                         </div>
                                     </div>

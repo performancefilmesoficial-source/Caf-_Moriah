@@ -157,7 +157,7 @@
             React.useEffect(() => {
                 const fetchProducts = async () => {
                     try {
-                        const res = await fetch('http://localhost:3000/api/products/online');
+                        const res = await fetch('/api/products/online');
                         const data = await res.json();
 
                         // Separa Bebidas/Grãos de Acessórios
@@ -188,7 +188,7 @@
             });
 
             React.useEffect(() => {
-                fetch('http://localhost:3000/api/site-settings')
+                fetch('/api/site-settings')
                     .then(r => r.json())
                     .then(data => {
                         if (data && data.hero_title) {
@@ -735,7 +735,7 @@
                     setStep('loading');
 
                     try {
-                        const response = await fetch('http://localhost:3000/api/checkout', {
+                        const response = await fetch('/api/checkout', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
