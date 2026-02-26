@@ -563,7 +563,15 @@ app.post('/api/webhook/asaas', async (req, res) => {
 });
 
 // Servir arquivos estáticos do frontend
-app.use(express.static(path.join(__dirname, '../')));
+const pdvStatic = express.static(path.join(__dirname, '../'));
+const ecommerceStatic = express.static(path.join(__dirname, '../frontend_ecommerce'));
+
+app.use((req, res, next) => {
+    const host = req.hostname || '';
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
+    if (host.includes('www.cafemoriah.com.br') || host === 'cafemoriah.com.br') return ecommerceStatic(req, res, next);
+    return pdvStatic(req, res, next);
+});
 
 // Inicializando o servidor
 app.listen(PORT, '0.0.0.0', () => {
