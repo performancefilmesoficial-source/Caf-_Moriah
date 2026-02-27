@@ -11,23 +11,31 @@ require('dotenv').config();
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
 const ASAAS_URL = 'https://api.asaas.com/v3';
 
-const upload = multer({ dest: 'uploads/' });
+// Upload em memória - imagem vira Base64 e fica no banco (não depende de disco)
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // máx 5MB
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Mantém compatibilidade com imagens antigas salvas em /uploads
 app.use('/uploads', express.static('uploads'));
 
-// Rota para Upload de Imagens de Produtos via Multer
+// Rota de Upload de Imagens — converte para Base64 e retorna como Data URL
+// Assim a imagem fica salva no banco MySQL e nunca é perdida em deploys
 app.post('/api/upload', upload.single('image'), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
     }
-    // Retorna a URL pública baseada no diretório estático '/uploads'
-    const imageUrl = `/uploads/${req.file.filename}`;
+    const mime = req.file.mimetype || 'image/jpeg';
+    const base64 = req.file.buffer.toString('base64');
+    const imageUrl = `data:${mime};base64,${base64}`;
     res.json({ imageUrl });
 });
 
@@ -122,12 +130,13 @@ async function initTables(dbUtil, isMysql) {
         stock INTEGER NOT NULL DEFAULT 0,
         minStock INTEGER NOT NULL DEFAULT 5,
         sku TEXT NOT NULL,
-        image_url TEXT,
+        image_url MEDIUMTEXT,
         description TEXT,
         weight_grams INTEGER DEFAULT 250,
         sell_online INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    `);
+    )`);
+
 
     await dbUtil.run(`CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY ${autoInc},
@@ -159,6 +168,8 @@ async function initTables(dbUtil, isMysql) {
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN tracking_code TEXT'); } catch (e) { }
     // Novos campos de produtos
     try { await dbUtil.run('ALTER TABLE products ADD COLUMN price_moido REAL DEFAULT 0'); } catch (e) { }
+    // Expande image_url para MEDIUMTEXT para suportar Base64 (apenas MySQL, SQLite não precisa)
+    try { await dbUtil.run('ALTER TABLE products MODIFY COLUMN image_url MEDIUMTEXT'); } catch (e) { }
 
     // FOREIGN KEY funciona em ambos
     await dbUtil.run(`CREATE TABLE IF NOT EXISTS sale_items (
