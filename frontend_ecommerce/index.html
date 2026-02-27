@@ -338,14 +338,20 @@
 
             const ProductCard = ({ product }) => {
                 const [grind, setGrind] = React.useState('grao');
-                const isCoffee = product.category.toLowerCase().includes('grão') || product.name.toLowerCase().includes('café');
+                const isCoffee = product.category.toLowerCase().includes('grão') || product.category.toLowerCase().includes('café') || product.category.toLowerCase().includes('cafe') || product.name.toLowerCase().includes('café');
                 const images = getProductImages(product.image_url);
                 const mainImage = images[0];
+                const FALLBACK = 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?auto=format&fit=crop&w=600&q=80';
 
                 return (
                     <div className="group bg-white rounded-3xl overflow-hidden shadow-soft flex flex-col h-full border border-stone-100 relative cursor-pointer" onClick={() => setSelectedProduct(product)}>
                         <div className="relative aspect-[4/3] overflow-hidden bg-stone-50">
-                            <img src={mainImage} className="w-full h-full object-cover group-hover:scale-105 transition duration-700" alt={product.name} />
+                            <img
+                                src={mainImage}
+                                className="w-full h-full object-cover group-hover:scale-105 transition duration-700"
+                                alt={product.name}
+                                onError={(e) => { e.target.onerror = null; e.target.src = FALLBACK; }}
+                            />
                         </div>
                         <div className="p-6 flex flex-col flex-1">
                             <span className="text-[10px] text-stone-400 mb-2 font-bold uppercase tracking-wider">{product.category}</span>
@@ -786,7 +792,12 @@
                             {/* Galeria Lado Esquerdo */}
                             <div className="w-full md:w-1/2 bg-stone-50 flex flex-col">
                                 <div className="relative aspect-square w-full">
-                                    <img src={images[currentImageIdx]} className="w-full h-full object-cover" alt={selectedProduct.name} />
+                                    <img
+                                        src={images[currentImageIdx]}
+                                        className="w-full h-full object-cover"
+                                        alt={selectedProduct.name}
+                                        onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?auto=format&fit=crop&w=800&q=80'; }}
+                                    />
                                     {images.length > 1 && (
                                         <>
                                             <button onClick={() => setCurrentImageIdx(prev => prev === 0 ? images.length - 1 : prev - 1)} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full shadow hover:bg-white text-stone-700 transition">
