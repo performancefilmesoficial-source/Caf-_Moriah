@@ -440,10 +440,23 @@
                 };
                 fetchProducts();
             }, []);
-            const [sales, setSales] = useState(() => {
-                const saved = localStorage.getItem('moriah_sales');
-                return saved ? JSON.parse(saved) : [];
-            });
+            const [sales, setSales] = useState([]);
+            const [isLoadingSales, setIsLoadingSales] = useState(false);
+
+            const fetchSales = async () => {
+                setIsLoadingSales(true);
+                try {
+                    const res = await fetch('/api/sales');
+                    if (res.ok) {
+                        const data = await res.json();
+                        setSales(data);
+                    }
+                } catch (err) {
+                    console.error('Erro ao carregar vendas:', err);
+                } finally {
+                    setIsLoadingSales(false);
+                }
+            };
             const [cart, setCart] = useState([]);
             const [searchTerm, setSearchTerm] = useState('');
             const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -505,13 +518,13 @@
                 if (currentUser) localStorage.setItem('moriah_current_user', JSON.stringify(currentUser));
                 else localStorage.removeItem('moriah_current_user');
             }, [currentUser]);
-            useEffect(() => { localStorage.setItem('moriah_sales', JSON.stringify(sales)); }, [sales]);
             useEffect(() => { localStorage.setItem('moriah_users', JSON.stringify(users)); }, [users]);
-            useEffect(() => {
-                if (currentUser) localStorage.setItem('moriah_current_user', JSON.stringify(currentUser));
-                else localStorage.removeItem('moriah_current_user');
-            }, [currentUser]);
             useEffect(() => { localStorage.setItem('moriah_customers', JSON.stringify(customers)); }, [customers]);
+
+            // Busca vendas do banco de dados ao abrir a aba de vendas
+            useEffect(() => {
+                if (view === 'sales') fetchSales();
+            }, [view]);
 
             const logoUrl = 'Verde.png';
 
@@ -571,7 +584,7 @@
                 return payload + crcHex;
             };
 
-            const finalizeSale = (method) => {
+            const finalizeSale = async (method) => {
                 const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
                 const total = subtotal * (1 - (discount / 100));
 
@@ -582,30 +595,44 @@
                     return;
                 }
 
-                const newSale = {
-                    id: Date.now(),
-                    seller: currentUser.name || currentUser.username,
-                    items: cart,
-                    subtotal,
-                    discount,
-                    total,
-                    method,
-                    origin: 'Físico', // Como esse é o PDV presencial, sempre é 'Físico'
-                    date: new Date().toISOString()
-                };
+                try {
+                    const res = await fetch('/api/sales', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            seller: currentUser?.name || currentUser?.username || 'PDV',
+                            items: cart,
+                            subtotal,
+                            discount,
+                            total,
+                            method,
+                            origin: 'Físico'
+                        })
+                    });
 
-                setProducts(curr => curr.map(p => {
-                    const cartItem = cart.find(ci => ci.id === p.id);
-                    return cartItem ? { ...p, stock: p.stock - cartItem.quantity } : p;
-                }));
+                    if (!res.ok) {
+                        const err = await res.json();
+                        alert('Erro ao salvar venda: ' + (err.error || 'Tente novamente'));
+                        return;
+                    }
 
-                setSales(curr => [newSale, ...curr]);
-                setCart([]);
-                setDiscount(0);
-                setIsCheckoutOpen(false);
-                setIsPixModalOpen(false);
-                setLastSale(newSale);
-                setIsSuccessModalOpen(true);
+                    // Atualiza o estoque localmente para feedback imediato
+                    setProducts(curr => curr.map(p => {
+                        const cartItem = cart.find(ci => ci.id === p.id);
+                        return cartItem ? { ...p, stock: p.stock - cartItem.quantity } : p;
+                    }));
+
+                    setCart([]);
+                    setDiscount(0);
+                    setIsCheckoutOpen(false);
+                    setIsPixModalOpen(false);
+                    setLastSale({ total, method, items: cart });
+                    setIsSuccessModalOpen(true);
+
+                } catch (error) {
+                    console.error('Erro ao finalizar venda:', error);
+                    alert('Falha de conexão com o servidor. Verifique sua rede.');
+                }
             };
 
             const sendWhatsAppReceipt = () => {
@@ -633,6 +660,31 @@
                     }
                 }
             };
+
+            const generateLabel = async (sale_id) => {
+                if (!confirm('Confirmar Geração de Etiqueta Logística? As taxas poderão ser cobradas do Saldo da Conta de Envios.')) return;
+                try {
+                    const res = await fetch('/api/shipping/generate-label', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sale_id })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert('Etiqueta Gerada com Sucesso! Rastreio: ' + data.tracking_code);
+                        if (data.label_url) window.open(data.label_url, '_blank');
+                        // Força a atualização da lista para exibir as vendas da DB SQLite real, incluindo status de envio novo
+                        const reload = await fetch('/api/sales');
+                        const salesData = await reload.json();
+                        setSales(salesData);
+                    } else {
+                        alert('Logística (' + data.error + ')');
+                    }
+                } catch (err) {
+                    alert('Falha de Integração com Gateway Logístico.');
+                }
+            };
+
             const renderView = (overrideView) => {
                 const currentView = overrideView || view;
                 switch (currentView) {
@@ -911,10 +963,10 @@
 
                     case 'sales': {
                         const filteredSales = sales.filter(s => {
-                            const saleDate = new Date(s.date);
+                            const saleDate = new Date(s.created_at || s.date);
                             const now = new Date();
 
-                            // Filtro de Data
+                            // Filtro de Data (usa created_at do banco ou date do localStorage)
                             let dateMatch = true;
                             if (periodFilter === 'day') dateMatch = saleDate.toDateString() === now.toDateString();
                             else if (periodFilter === 'week') { const diff = now - saleDate; dateMatch = diff <= 7 * 24 * 60 * 60 * 1000; }
@@ -922,7 +974,7 @@
 
                             // Filtro de Origem
                             let originMatch = true;
-                            const saleOrigin = s.origin || 'Físico'; // Fallback para vendas antigas
+                            const saleOrigin = s.origin || 'Físico';
                             if (originFilter === 'fisico') originMatch = saleOrigin === 'Físico';
                             else if (originFilter === 'online') originMatch = saleOrigin === 'Online';
 
@@ -930,6 +982,7 @@
                         });
                         return (
                             <div class="space-y-6 animate-in fade-in duration-500 text-stone-900">
+                                {isLoadingSales && <div class="flex items-center justify-center gap-3 py-4 text-stone-500"><div class="w-5 h-5 border-2 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>Carregando vendas...</div>}
                                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
                                     <h2 class="text-2xl font-bold">Relatório de Vendas</h2>
                                     <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
@@ -949,6 +1002,7 @@
                                             </div>
                                         </div>
                                         <button onClick={() => window.print()} class="flex items-center justify-center gap-2 bg-moriah-brown text-white px-6 py-2 rounded-xl hover:bg-moriah-dark transition-all shadow-lg hidden md:flex"><LucideIcon name="printer" className="w-4 h-4" />Imprimir</button>
+                                        <button onClick={fetchSales} disabled={isLoadingSales} class="flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 transition-all shadow-sm text-sm font-bold disabled:opacity-50"><LucideIcon name="refresh-cw" className="w-4 h-4" />Atualizar</button>
                                     </div>
                                 </div>
                                 <div class="print-only hidden py-8 border-b-2 border-stone-200 mb-8">
@@ -959,30 +1013,43 @@
                                 <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden text-sm">
                                     <div class="overflow-x-auto">
                                         <table class="w-full text-left min-w-[500px] md:min-w-0">
-                                            <thead class="bg-stone-50 border-b border-stone-100 text-stone-500 font-medium">
-                                                <tr><th class="px-6 py-4">Vendedor / Data</th><th class="px-6 py-4 hidden sm:table-cell">Origem</th><th class="px-6 py-4 hidden sm:table-cell">Status</th><th class="px-6 py-4 hidden sm:table-cell">Itens</th><th class="px-6 py-4">Método</th><th class="px-6 py-4 text-right">Total</th></tr>
+                                            <thead class="bg-stone-50 border-b border-stone-100 text-stone-500 text-xs font-medium uppercase tracking-wider">
+                                                <tr><th class="px-6 py-3">Data</th><th class="px-6 py-3 hidden sm:table-cell">Origem</th><th class="px-6 py-3 hidden sm:table-cell">Status</th><th class="px-6 py-3 hidden md:table-cell">Itens</th><th class="px-6 py-3 text-right">Total</th><th class="px-6 py-3 text-center">Ações</th></tr>
                                             </thead>
-                                            <tbody class="divide-y divide-stone-50">
+                                            <tbody class="divide-y divide-stone-50 text-sm">
                                                 {filteredSales.map(s => (
-                                                    <tr key={s.id}>
+                                                    <tr key={s.id} class="hover:bg-stone-50 transition-colors">
                                                         <td class="px-6 py-4">
-                                                            <p class="font-bold">{s.seller || 'Sistema'}</p><p class="text-xs text-stone-400">{new Date(s.date).toLocaleString('pt-BR')}</p>
+                                                            <p class="font-bold">{s.seller || 'Sistema'}</p><p class="text-xs text-stone-400">{new Date(s.created_at || s.date).toLocaleString('pt-BR')}</p>
                                                         </td>
                                                         <td class="px-6 py-4 hidden sm:table-cell">
                                                             <span class={`flex items-center gap-1 w-max px-2 py-1 rounded-md text-[10px] font-bold uppercase ${(!s.origin || s.origin === 'Físico') ? 'bg-stone-100 text-stone-600 border border-stone-200' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'}`}>
                                                                 <LucideIcon name={(!s.origin || s.origin === 'Físico') ? 'store' : 'globe'} className="w-3 h-3" /> {s.origin || 'Físico'}
                                                             </span>
                                                         </td>
-                                                        <td class="px-6 py-4 hidden sm:table-cell text-xs text-stone-600">{s.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</td>
-                                                        <td class="px-6 py-4"><span class={`px-2 py-1 rounded text-[10px] font-bold uppercase ${s.method === 'Dinheiro' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{s.method}</span></td>
-                                                        <td class="px-6 py-4 text-right font-bold text-lg">R$ {s.total.toFixed(2)}</td>
+                                                        <td class="px-6 py-4 hidden sm:table-cell">
+                                                            <span class={`px-2 py-1 rounded text-[10px] font-bold uppercase ${(s.tracking_code || s.status === 'Enviado' || s.status === 'Etiqueta Gerada') ? 'bg-indigo-100 text-indigo-700' : (s.status === 'Concluído' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}`}>{s.tracking_code ? 'Enviado' : (s.status || 'Concluído')}</span>
+                                                        </td>
+                                                        <td class="px-6 py-4 hidden md:table-cell text-xs text-stone-600 max-w-[200px] truncate">{(s.items || []).map(i => `${i.quantity}x ${(i.product_name || i.name)}`).join(', ') || '-'}</td>
+                                                        <td class="px-6 py-4 text-right font-bold text-lg whitespace-nowrap">R$ {s.total.toFixed(2)}</td>
+                                                        <td class="px-6 py-4 text-center">
+                                                            {s.origin === 'Online' && !s.tracking_code ? (
+                                                                <button onClick={() => generateLabel(s.id)} class="text-[10px] md:text-xs bg-moriah-brown hover:bg-moriah-dark px-3 py-1.5 rounded-lg text-white font-bold transition-all shadow-sm w-full whitespace-nowrap">
+                                                                    Gerar Etiqueta
+                                                                </button>
+                                                            ) : s.tracking_code ? (
+                                                                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded uppercase tracking-wider">{s.tracking_code}</span>
+                                                            ) : (
+                                                                <span class="text-xs text-stone-300">-</span>
+                                                            )}
+                                                        </td>
                                                     </tr>
                                                 ))}
-                                                {filteredSales.length === 0 && (<tr><td colspan="4" class="px-6 py-12 text-center text-stone-400">Nenhuma venda registrada neste período.</td></tr>)}
+                                                {filteredSales.length === 0 && (<tr><td colSpan="6" class="px-6 py-12 text-center text-stone-400">Nenhuma venda registrada neste período.</td></tr>)}
                                             </tbody>
                                             {filteredSales.length > 0 && (
                                                 <tfoot class="bg-stone-50 border-t border-stone-100">
-                                                    <tr class="font-black text-lg"><td colspan="3" class="px-6 py-4 text-right">TOTAL ACUMULADO</td><td class="px-6 py-4 text-right text-moriah-brown">R$ {filteredSales.reduce((acc, curr) => acc + curr.total, 0).toFixed(2)}</td></tr>
+                                                    <tr class="font-black text-lg"><td colSpan="4" class="px-6 py-4 text-right">TOTAL ACUMULADO</td><td class="px-6 py-4 text-right text-moriah-brown">R$ {filteredSales.reduce((acc, curr) => acc + curr.total, 0).toFixed(2)}</td><td></td></tr>
                                                 </tfoot>
                                             )}
                                         </table>
