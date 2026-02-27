@@ -118,6 +118,7 @@ async function initTables(dbUtil, isMysql) {
         category TEXT NOT NULL,
         cost REAL NOT NULL,
         price REAL NOT NULL,
+        price_moido REAL DEFAULT 0,
         stock INTEGER NOT NULL DEFAULT 0,
         minStock INTEGER NOT NULL DEFAULT 5,
         sku TEXT NOT NULL,
@@ -126,7 +127,7 @@ async function initTables(dbUtil, isMysql) {
         weight_grams INTEGER DEFAULT 250,
         sell_online INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+    `);
 
     await dbUtil.run(`CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY ${autoInc},
@@ -156,6 +157,8 @@ async function initTables(dbUtil, isMysql) {
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_cost REAL DEFAULT 0'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_service TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN tracking_code TEXT'); } catch (e) { }
+    // Novos campos de produtos
+    try { await dbUtil.run('ALTER TABLE products ADD COLUMN price_moido REAL DEFAULT 0'); } catch (e) { }
 
     // FOREIGN KEY funciona em ambos
     await dbUtil.run(`CREATE TABLE IF NOT EXISTS sale_items (
@@ -226,11 +229,11 @@ app.get('/api/products/online', async (req, res) => {
 
 // 2. Adicionar um novo produto
 app.post('/api/products', async (req, res) => {
-    const { name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
+    const { name, category, cost, price, price_moido, stock, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
     try {
         const result = await dbUtil.run(
-            'INSERT INTO products (name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online]
+            'INSERT INTO products (name, category, cost, price, price_moido, stock, minStock, sku, image_url, description, weight_grams, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [name, category, cost, price, price_moido || 0, stock, minStock, sku, image_url, description, weight_grams, sell_online]
         );
         res.status(201).json({ id: result[0].insertId, message: 'Produto cadastrado com sucesso!' });
     } catch (error) {
@@ -242,11 +245,11 @@ app.post('/api/products', async (req, res) => {
 // 3. Atualizar um produto
 app.put('/api/products/:id', async (req, res) => {
     const { id } = req.params;
-    const { name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
+    const { name, category, cost, price, price_moido, stock, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
     try {
         await dbUtil.run(
-            'UPDATE products SET name=?, category=?, cost=?, price=?, stock=?, minStock=?, sku=?, image_url=?, description=?, weight_grams=?, sell_online=? WHERE id=?',
-            [name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online, id]
+            'UPDATE products SET name=?, category=?, cost=?, price=?, price_moido=?, stock=?, minStock=?, sku=?, image_url=?, description=?, weight_grams=?, sell_online=? WHERE id=?',
+            [name, category, cost, price, price_moido || 0, stock, minStock, sku, image_url, description, weight_grams, sell_online, id]
         );
         res.json({ message: 'Produto atualizado com sucesso!' });
     } catch (error) {
