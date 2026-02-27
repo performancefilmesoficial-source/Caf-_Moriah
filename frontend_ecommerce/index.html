@@ -657,7 +657,12 @@
                                     cart.map((item, idx) => (
                                         <div key={`${item.id}-${item.grind}-${idx}`} className="flex gap-4 p-4 bg-white rounded-2xl border border-stone-100 relative group shadow-sm hover:shadow-md transition-shadow">
                                             <div className="w-20 h-20 bg-stone-50 rounded-xl overflow-hidden flex-shrink-0 relative">
-                                                <img src={item.image_url || 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?ixlib=rb-4.0.3&auto=format&fit=crop&w=150&q=80'} className="w-full h-full object-cover" alt={item.name} />
+                                                <img
+                                                    src={getProductImages(item.image_url)[0]}
+                                                    className="w-full h-full object-cover"
+                                                    alt={item.name}
+                                                    onError={(e) => { e.target.onerror = null; e.target.src = 'https://images.unsplash.com/photo-1559525839-b184a4d698c7?auto=format&fit=crop&w=150&q=80'; }}
+                                                />
                                             </div>
                                             <div className="flex-1">
                                                 <h4 className="font-bold text-moriah-green leading-tight pr-8">{item.name}</h4>
@@ -713,7 +718,7 @@
                                                             </div>
                                                             <div>
                                                                 <p className="font-bold text-sm text-moriah-brown">{opt.name.replace(' Correios', '')}</p>
-                                                                <p className="text-[10px] uppercase text-stone-500 font-bold">{opt.delivery_time} a {opt.delivery_time + 2} dias uteis</p>
+                                                                <p className="text-[10px] uppercase text-stone-500 font-bold">{opt.delivery_time || 'Consulte o prazo'}</p>
                                                             </div>
                                                         </div>
                                                         <span className="font-bold text-moriah-green">R$ {opt.price.replace('.', ',')}</span>
@@ -986,26 +991,46 @@
                                 {step === 'pix' && pixData && (
                                     <div className="space-y-6 text-center animate-in fade-in">
                                         <div className="flex flex-col items-center justify-center border-b border-stone-100 pb-6">
-                                            <div className="w-16 h-16 bg-moriah-green/10 text-moriah-green rounded-full flex items-center justify-center mb-4"><LucideIcon name="qr-code" className="w-8 h-8" /></div>
-                                            <h3 className="font-bold text-2xl text-moriah-brown mb-2">Pague via PIX Asaas</h3>
-                                            <p className="text-stone-500 max-w-sm mx-auto">Use o aplicativo do seu banco para ler o QR Code de R$ {finalTotal.toFixed(2).replace('.', ',')} para aprovação.</p>
+                                            <div className="w-16 h-16 bg-moriah-green/10 text-moriah-green rounded-full flex items-center justify-center mb-4"><LucideIcon name="check-circle" className="w-8 h-8" /></div>
+                                            <h3 className="font-bold text-2xl text-moriah-brown mb-2">Pedido Registrado!</h3>
+                                            <p className="text-stone-500 max-w-sm mx-auto">Seu pedido foi recebido. Finalize o pagamento abaixo.</p>
                                         </div>
-                                        <div className="flex justify-center my-6">
-                                            <div className="p-4 bg-white border-2 border-stone-100 rounded-3xl shadow-sm inline-block"><img src={`data:image/jpeg;base64,${pixData.encodedImage}`} alt="QR Code PIX" className="w-48 h-48 md:w-56 md:h-56 object-contain" /></div>
-                                        </div>
-                                        <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
-                                            <p className="text-xs font-bold uppercase text-stone-400 mb-2">Copia e Cola</p>
-                                            <div className="flex items-center gap-2">
-                                                <input readOnly type="text" value={pixData.payload} className="flex-1 bg-white border border-stone-200 px-3 py-2 rounded-lg text-sm text-stone-600 outline-none" />
-                                                <button onClick={() => { navigator.clipboard.writeText(pixData.payload); alert('Código copiado!'); }} className="bg-moriah-gold text-white p-2.5 rounded-lg hover:bg-yellow-500 transition shadow-sm"><LucideIcon name="copy" className="w-4 h-4" /></button>
+
+                                        {pixData.encodedImage ? (
+                                            <>
+                                                <div className="flex justify-center my-6">
+                                                    <div className="p-4 bg-white border-2 border-stone-100 rounded-3xl shadow-sm inline-block"><img src={`data:image/jpeg;base64,${pixData.encodedImage}`} alt="QR Code PIX" className="w-48 h-48 md:w-56 md:h-56 object-contain" /></div>
+                                                </div>
+                                                <div className="bg-stone-50 p-4 rounded-xl border border-stone-200">
+                                                    <p className="text-xs font-bold uppercase text-stone-400 mb-2">PIX Copia e Cola</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <input readOnly type="text" value={pixData.payload} className="flex-1 bg-white border border-stone-200 px-3 py-2 rounded-lg text-sm text-stone-600 outline-none" />
+                                                        <button onClick={() => { navigator.clipboard.writeText(pixData.payload); alert('Código copiado!'); }} className="bg-moriah-gold text-white p-2.5 rounded-lg hover:bg-yellow-500 transition shadow-sm"><LucideIcon name="copy" className="w-4 h-4" /></button>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-left space-y-4">
+                                                <p className="font-bold text-moriah-green text-lg flex items-center gap-2"><LucideIcon name="smartphone" className="w-5 h-5" /> Como pagar via PIX:</p>
+                                                <ol className="list-decimal list-inside space-y-2 text-stone-600 text-sm">
+                                                    <li>Abra o app do seu banco</li>
+                                                    <li>Selecione <strong>PIX → Pagar → Chave</strong></li>
+                                                    <li>Use a chave: <strong className="text-moriah-green select-all">75992073245</strong> (celular)</li>
+                                                    <li>Nome: <strong>Moriah Café</strong> — Valor: <strong>R$ {finalTotal.toFixed(2).replace('.', ',')}</strong></li>
+                                                    <li>Envie o comprovante pelo WhatsApp</li>
+                                                </ol>
+                                                <a href={pixData.invoiceUrl} target="_blank" className="flex items-center justify-center gap-2 bg-green-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-green-700 transition w-full mt-2">
+                                                    <LucideIcon name="message-circle" className="w-5 h-5" /> Confirmar via WhatsApp
+                                                </a>
                                             </div>
-                                        </div>
+                                        )}
+
                                         <div className="pt-4 flex flex-col gap-3">
-                                            <button onClick={() => { setIsCheckingOut(false); window.location.reload(); }} className="w-full bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all">Já Realizei o Pagamento</button>
-                                            <a href={pixData.invoiceUrl} target="_blank" className="text-sm font-semibold text-stone-400 hover:text-moriah-green underline">Abrir Fatura Oficial (Asaas)</a>
+                                            <button onClick={() => { setIsCheckingOut(false); window.location.reload(); }} className="w-full bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg hover:-translate-y-1 hover:shadow-xl transition-all">✅ Já Realizei o Pagamento</button>
                                         </div>
                                     </div>
                                 )}
+
 
                                 {step === 'loading' && (
                                     <div className="text-center py-12 flex flex-col items-center">

@@ -467,6 +467,37 @@ const transporter = nodemailer.createTransport({
 app.post('/api/checkout', async (req, res) => {
     const { customerName, customerEmail, customerCpf, customerPhone, customerCep, customerAddressNumber, cartItems, totalAmount, billingType, cardData } = req.body;
 
+    // SE NÃO HÁ API KEY DO ASAAS configurada, simula um checkout manual (loja registra o pedido e notifica via email)
+    if (!ASAAS_API_KEY) {
+        console.log('[CHECKOUT] ASAAS_API_KEY não configurada. Registrando pedido manualmente.');
+        try {
+            const fakePaymentId = `MANUAL-${Date.now()}`;
+            const result = await dbUtil.run(
+                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, shipping_cost, shipping_service) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', 'Aguardando Pagamento', customerPhone, fakePaymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS']
+            );
+            const saleId = result[0].insertId;
+            for (const item of cartItems) {
+                await dbUtil.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                    [saleId, item.id, item.name, item.quantity, item.price]);
+                await dbUtil.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+            }
+            // PIX simulado para o cliente finalizar
+            const pixPayload = `00020126360014BR.GOV.BCB.PIX0114+5575992073245520400005303986540${totalAmount.toFixed(2)}5802BR5912MORIAH CAFE6009SAO PAULO62070503***6304ABCD`;
+            return res.status(200).json({
+                success: true,
+                sale_id: fakePaymentId,
+                pixPayload: pixPayload,
+                encodedImage: null, // Sem QR code dinâmico sem API
+                invoiceUrl: 'https://wa.me/5575992073245?text=Olá%2C%20fiz%20um%20pedido%20no%20site%20e%20quero%20pagar',
+                note: 'Pedido registrado manualmente. Entre em contato via WhatsApp para confirmar o pagamento.'
+            });
+        } catch (dbErr) {
+            console.error('[CHECKOUT MANUAL] Erro ao salvar:', dbErr);
+            return res.status(500).json({ success: false, error: 'Erro ao registrar pedido manual.' });
+        }
+    }
+
     try {
         console.log("Iniciando requisição de checkout remoto - Asaas API...");
 
@@ -485,7 +516,7 @@ app.post('/api/checkout', async (req, res) => {
         // 2. Montar Cobrança Asaas
         const paymentPayload = {
             customer: customerId,
-            billingType: billingType || 'PIX', // 'PIX' ou 'CREDIT_CARD'
+            billingType: billingType || 'PIX',
             dueDate: new Date().toISOString().split('T')[0],
             value: totalAmount,
             description: 'Pedido E-commerce Moriah Café'
@@ -545,27 +576,17 @@ app.post('/api/checkout', async (req, res) => {
         (async () => {
             try {
                 await dbUtil.run(process.env.DATABASE_URL ? 'START TRANSACTION' : 'BEGIN TRANSACTION');
-
-                // Cartões aprovam mais rápido que PIX, porém deixaremos pendente até webhook para simplificar por enquanto.
                 const statusInicial = 'Pendente';
-
                 const result = await dbUtil.run(
                     'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, shipping_cost, shipping_service) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', req.body.shippingCost || 0, req.body.shippingService || 'RETIRADA']
+                    [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS']
                 );
                 const saleId = result[0].insertId;
-
                 for (const item of cartItems) {
-                    await dbUtil.run(
-                        'INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
-                        [saleId, item.id, item.name, item.quantity, item.price]
-                    );
-                    await dbUtil.run(
-                        'UPDATE products SET stock = stock - ? WHERE id = ?',
-                        [item.quantity, item.id]
-                    );
+                    await dbUtil.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                        [saleId, item.id, item.name, item.quantity, item.price]);
+                    await dbUtil.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
                 }
-
                 await dbUtil.run('COMMIT');
             } catch (dbErr) {
                 await dbUtil.run('ROLLBACK');
@@ -624,20 +645,27 @@ app.post('/api/shipping/calculate', async (req, res) => {
                     'User-Agent': 'MoriahCafe (atendimento@moriahcafe.com)'
                 }
             });
-            services = response.data.filter(s => !s.error && (s.name.includes('PAC') || s.name.includes('SEDEX')));
+            services = response.data
+                .filter(s => !s.error && (s.name.includes('PAC') || s.name.includes('SEDEX')))
+                .map(s => ({
+                    id: s.id,
+                    name: s.name,
+                    price: s.price,
+                    delivery_time: s.custom_delivery_time ? `${s.custom_delivery_time} dias úteis` : 'Consulte o prazo'
+                }));
         } else {
-            console.log('MELHORENVIO_TOKEN ausente. Usando Fallback de Frete Simulado.');
+            console.log('MELHORENVIO_TOKEN ausente. Usando frete simulado.');
             services = [
-                { id: 1, name: 'PAC (Simulado via Backend)', price: '25.90', custom_delivery_time: 7 },
-                { id: 2, name: 'SEDEX (Simulado via Backend)', price: '48.50', custom_delivery_time: 2 }
+                { id: 1, name: 'PAC - Correios', price: '25.90', delivery_time: 'Até 7 dias úteis' },
+                { id: 2, name: 'SEDEX - Correios', price: '48.50', delivery_time: 'Até 2 dias úteis' }
             ];
         }
         res.json({ success: true, services });
     } catch (error) {
-        console.error('Erro ao calcular frete real, caindo para fallback:', error.response?.data || error.message);
+        console.error('Erro ao calcular frete, usando simulado:', error.message);
         const services = [
-            { id: 1, name: 'PAC (Fallback - Modo Teste)', price: '25.90', custom_delivery_time: 7 },
-            { id: 2, name: 'SEDEX (Fallback - Modo Teste)', price: '48.50', custom_delivery_time: 2 }
+            { id: 1, name: 'PAC - Correios', price: '25.90', delivery_time: 'Até 7 dias úteis' },
+            { id: 2, name: 'SEDEX - Correios', price: '48.50', delivery_time: 'Até 2 dias úteis' }
         ];
         res.json({ success: true, services });
     }
