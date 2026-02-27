@@ -248,6 +248,19 @@ app.post('/api/products', async (req, res) => {
         );
         res.status(201).json({ id: result[0].insertId, message: 'Produto cadastrado com sucesso!' });
     } catch (error) {
+        // Se falhou por causa do price_moido (coluna ainda nao existe), tenta sem ele
+        if (error.code === 'ER_BAD_FIELD_ERROR' && error.message && error.message.includes('price_moido')) {
+            try {
+                const result = await dbUtil.run(
+                    'INSERT INTO products (name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online]
+                );
+                return res.status(201).json({ id: result[0].insertId, message: 'Produto cadastrado com sucesso!' });
+            } catch (e2) {
+                console.error(e2);
+                return res.status(500).json({ error: 'Erro ao criar produto' });
+            }
+        }
         console.error(error);
         res.status(500).json({ error: 'Erro ao criar produto' });
     }
@@ -258,10 +271,17 @@ app.put('/api/products/:id', async (req, res) => {
     const { id } = req.params;
     const { name, category, cost, price, price_moido, stock, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
     try {
+        // UPDATE principal sem price_moido para garantir compatibilidade com banco existente
         await dbUtil.run(
-            'UPDATE products SET name=?, category=?, cost=?, price=?, price_moido=?, stock=?, minStock=?, sku=?, image_url=?, description=?, weight_grams=?, sell_online=? WHERE id=?',
-            [name, category, cost, price, price_moido || 0, stock, minStock, sku, image_url, description, weight_grams, sell_online, id]
+            'UPDATE products SET name=?, category=?, cost=?, price=?, stock=?, minStock=?, sku=?, image_url=?, description=?, weight_grams=?, sell_online=? WHERE id=?',
+            [name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online, id]
         );
+        // Tenta atualizar price_moido separadamente (falha silenciosa se coluna nao existir ainda)
+        if (price_moido !== undefined) {
+            try {
+                await dbUtil.run('UPDATE products SET price_moido=? WHERE id=?', [price_moido || 0, id]);
+            } catch (e) { /* coluna pode ainda nao existir */ }
+        }
         res.json({ message: 'Produto atualizado com sucesso!' });
     } catch (error) {
         console.error(error);
