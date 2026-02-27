@@ -150,6 +150,14 @@
             const [cafes, setCafes] = React.useState([]);
             const [acessorios, setAcessorios] = React.useState([]);
             const [isLoading, setIsLoading] = React.useState(true);
+            const [globalSearch, setGlobalSearch] = React.useState('');
+
+            // Escuta o evento de busca disparado pelo Header
+            React.useEffect(() => {
+                const handler = (e) => setGlobalSearch(e.detail.query || '');
+                window.addEventListener('moriah-search', handler);
+                return () => window.removeEventListener('moriah-search', handler);
+            }, []);
 
             React.useEffect(() => {
                 const fetchProducts = async () => {
@@ -201,27 +209,48 @@
             }, []);
 
             const Header = () => {
+                const [searchOpen, setSearchOpen] = React.useState(false);
+                const [searchQuery, setSearchQuery] = React.useState('');
+                const inputRef = React.useRef(null);
+
                 const scrollToSection = (e, id) => {
                     e.preventDefault();
                     const element = document.getElementById(id);
                     if (element) {
-                        const offset = 80; // Altura do cabeçalho
+                        const offset = 80;
                         const bodyRect = document.body.getBoundingClientRect().top;
                         const elementRect = element.getBoundingClientRect().top;
                         const elementPosition = elementRect - bodyRect;
                         const offsetPosition = elementPosition - offset;
-
-                        window.scrollTo({
-                            top: offsetPosition,
-                            behavior: 'smooth'
-                        });
+                        window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
                     }
+                };
+
+                const handleSearchToggle = () => {
+                    setSearchOpen(prev => {
+                        const next = !prev;
+                        if (next) setTimeout(() => inputRef.current?.focus(), 50);
+                        else setSearchQuery('');
+                        return next;
+                    });
+                };
+
+                const handleSearchChange = (e) => {
+                    const q = e.target.value;
+                    setSearchQuery(q);
+                    if (q.trim()) {
+                        // Rola até os produtos ao digitar
+                        const el = document.getElementById('produtos');
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                    // Dispara evento customizado para filtrar produtos
+                    window.dispatchEvent(new CustomEvent('moriah-search', { detail: { query: q } }));
                 };
 
                 return (
                     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-moriah-sand border-opacity-50">
-                        <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
-                            <div className="flex items-center cursor-pointer" onClick={(e) => scrollToSection(e, 'inicio')}>
+                        <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-3">
+                            <div className="flex items-center cursor-pointer flex-shrink-0" onClick={(e) => scrollToSection(e, 'inicio')}>
                                 <img src="logo.png" alt="Moriah Café Especial" className="h-10 md:h-12 object-contain" />
                             </div>
                             <div className="hidden md:flex gap-8 text-sm font-medium">
@@ -231,13 +260,29 @@
                                 <a href="#nossahistoria" onClick={(e) => scrollToSection(e, 'nossahistoria')} className="hover:text-moriah-gold transition-colors">Nossa História</a>
                                 <button onClick={() => setIsTrackingOpen(true)} className="flex items-center gap-2 hover:text-moriah-gold transition-colors"><LucideIcon name="package" className="w-4 h-4" />Rastreio</button>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <button className="p-2 hover:bg-moriah-sand/20 rounded-full transition"><LucideIcon name="search" className="w-5 h-5" /></button>
+                            <div className="flex items-center gap-2">
+                                {/* Barra de busca expansível */}
+                                <div className={`flex items-center gap-2 transition-all duration-300 overflow-hidden ${searchOpen ? 'w-48 md:w-64 bg-stone-50 border border-stone-200 rounded-full px-3' : 'w-9'}`}>
+                                    <button onClick={handleSearchToggle} className="p-1.5 hover:bg-moriah-sand/20 rounded-full transition flex-shrink-0" title="Buscar produtos">
+                                        <LucideIcon name={searchOpen ? 'x' : 'search'} className="w-5 h-5" />
+                                    </button>
+                                    {searchOpen && (
+                                        <input
+                                            ref={inputRef}
+                                            type="text"
+                                            placeholder="Buscar produtos..."
+                                            value={searchQuery}
+                                            onChange={handleSearchChange}
+                                            onKeyDown={(e) => e.key === 'Escape' && handleSearchToggle()}
+                                            className="w-full bg-transparent outline-none text-sm text-moriah-black placeholder-stone-400 py-1.5"
+                                        />
+                                    )}
+                                </div>
+                                {/* Carrinho */}
                                 <button className="p-2 hover:bg-moriah-sand/20 rounded-full transition relative" onClick={() => setIsCartOpen(true)}>
                                     <LucideIcon name="shopping-bag" className="w-5 h-5" />
                                     {cart.length > 0 && <span className="absolute top-0 right-0 bg-moriah-gold text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{cart.reduce((a, b) => a + b.quantity, 0)}</span>}
                                 </button>
-                                <button className="hidden md:block p-2 hover:bg-moriah-sand/20 rounded-full transition"><LucideIcon name="user" className="w-5 h-5" /></button>
                             </div>
                         </div>
                     </header>
@@ -454,63 +499,88 @@
                 </nav>
             );
 
-            const Main = () => (
-                <main className="flex-1">
-                    <Hero />
-                    <section className="bg-moriah-bg py-24 px-4" id="produtos">
-                        <div className="max-w-7xl mx-auto">
-                            <div className="text-center mb-16 relative">
-                                <span className="text-moriah-orange text-sm tracking-[0.2em] uppercase font-bold mb-4 block">Nossa Seleção</span>
-                                <h2 className="font-sans text-4xl md:text-5xl font-bold text-moriah-green mb-6 relative z-10 transition-colors duration-500">
-                                    Cafés Especiais
-                                </h2>
-                                <p className="text-stone-500 max-w-2xl mx-auto font-light leading-relaxed">
-                                    Conheça nossos grãos classificados acima de 84 pontos na escala SCA. Torrados semanalmente para garantir o máximo de frescor e sabor.
-                                </p>
+            const Main = () => {
+                const q = globalSearch.toLowerCase().trim();
+
+                const filteredCafes = q
+                    ? cafes.filter(p => p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q) || p.category.toLowerCase().includes(q))
+                    : cafes;
+
+                const filteredAcessorios = q
+                    ? acessorios.filter(p => p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q) || p.category.toLowerCase().includes(q))
+                    : acessorios;
+
+                const totalResults = filteredCafes.length + filteredAcessorios.length;
+
+                return (
+                    <main className="flex-1">
+                        <Hero />
+                        {/* Banner de resultado de busca */}
+                        {q && (
+                            <div className="bg-moriah-gold/10 border-b border-moriah-gold/20 px-4 py-3 text-center">
+                                <span className="text-moriah-brown font-semibold text-sm">
+                                    {totalResults > 0
+                                        ? `${totalResults} produto${totalResults > 1 ? 's' : ''} encontrado${totalResults > 1 ? 's' : ''} para "${globalSearch}"`
+                                        : `Nenhum produto encontrado para "${globalSearch}"`
+                                    }
+                                </span>
                             </div>
-
-                            {isLoading ? (
-                                <div className="flex justify-center py-12">
-                                    <div className="w-10 h-10 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>
+                        )}
+                        <section className="bg-moriah-bg py-24 px-4" id="produtos">
+                            <div className="max-w-7xl mx-auto">
+                                <div className="text-center mb-16 relative">
+                                    <span className="text-moriah-orange text-sm tracking-[0.2em] uppercase font-bold mb-4 block">Nossa Seleção</span>
+                                    <h2 className="font-sans text-4xl md:text-5xl font-bold text-moriah-green mb-6 relative z-10 transition-colors duration-500">
+                                        Cafés Especiais
+                                    </h2>
+                                    <p className="text-stone-500 max-w-2xl mx-auto font-light leading-relaxed">
+                                        Conheça nossos grãos classificados acima de 84 pontos na escala SCA. Torrados semanalmente para garantir o máximo de frescor e sabor.
+                                    </p>
                                 </div>
-                            ) : cafes.length === 0 ? (
-                                <div className="text-center py-12 text-stone-400 italic">No momento, nosso mestre de torra está preparando os lotes. Volte logo!</div>
-                            ) : (
-                                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                    {cafes.map(product => (
-                                        <ProductCard key={product.id} product={product} />
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </section>
 
-                    <section className="bg-stone-50 border-t border-stone-100 py-24 px-4" id="acessorios">
-                        <div className="max-w-7xl mx-auto">
-                            <div className="text-center mb-16">
-                                <span className="text-moriah-gold text-sm tracking-[0.2em] uppercase font-bold mb-4 block">Para extrações perfeitas</span>
-                                <h2 className="font-sans text-4xl font-bold text-moriah-brown mb-6">Equipamentos & Acessórios</h2>
-                                <p className="text-stone-500 max-w-2xl mx-auto font-light leading-relaxed">Tudo que você precisa para preparar e servir o café especial perfeito na sua casa.</p>
+                                {isLoading ? (
+                                    <div className="flex justify-center py-12">
+                                        <div className="w-10 h-10 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>
+                                    </div>
+                                ) : filteredCafes.length === 0 ? (
+                                    <div className="text-center py-12 text-stone-400 italic">{q ? `Nenhum café encontrado para "${globalSearch}".` : 'No momento, nosso mestre de torra está preparando os lotes. Volte logo!'}</div>
+                                ) : (
+                                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                        {filteredCafes.map(product => (
+                                            <ProductCard key={product.id} product={product} />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
+                        </section>
 
-                            {isLoading ? (
-                                <div className="flex justify-center py-12">
-                                    <div className="w-10 h-10 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>
+                        <section className="bg-stone-50 border-t border-stone-100 py-24 px-4" id="acessorios">
+                            <div className="max-w-7xl mx-auto">
+                                <div className="text-center mb-16">
+                                    <span className="text-moriah-gold text-sm tracking-[0.2em] uppercase font-bold mb-4 block">Para extrações perfeitas</span>
+                                    <h2 className="font-sans text-4xl font-bold text-moriah-brown mb-6">Equipamentos &amp; Acessórios</h2>
+                                    <p className="text-stone-500 max-w-2xl mx-auto font-light leading-relaxed">Tudo que você precisa para preparar e servir o café especial perfeito na sua casa.</p>
                                 </div>
-                            ) : acessorios.length === 0 ? (
-                                <div className="text-center py-12 text-stone-400 italic">Sem acessórios disponíveis no momento.</div>
-                            ) : (
-                                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                                    {acessorios.map(product => (
-                                        <ProductCard key={product.id} product={product} />
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </section>
-                    <OurStory />
-                </main>
-            );
+
+                                {isLoading ? (
+                                    <div className="flex justify-center py-12">
+                                        <div className="w-10 h-10 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>
+                                    </div>
+                                ) : filteredAcessorios.length === 0 ? (
+                                    <div className="text-center py-12 text-stone-400 italic">{q ? `Nenhum acessório encontrado para "${globalSearch}".` : 'Sem acessórios disponíveis no momento.'}</div>
+                                ) : (
+                                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                        {filteredAcessorios.map(product => (
+                                            <ProductCard key={product.id} product={product} />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                        <OurStory />
+                    </main>
+                );
+            };
 
             const CartDrawer = () => {
                 const [shippingCep, setShippingCep] = React.useState('');
