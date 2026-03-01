@@ -992,7 +992,9 @@
                             } else {
                                 setStep(3); // Sucesso direto no Cartão
                             }
-                            setCart([]);
+                            // Nota: setCart([]) foi removido daqui para não causar re-render do App,
+                            // que desmontaria o CheckoutModal (definido dentro do App) antes de mostrar
+                            // a tela de sucesso. O reload() nas telas de confirmação limpa o estado.
                         } else {
                             const msg = data.error || 'Verifique seus dados e tente novamente.';
                             setErrorMsg(msg);

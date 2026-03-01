@@ -1033,12 +1033,14 @@
                                                         <td class="px-6 py-4 hidden md:table-cell text-xs text-stone-600 max-w-[200px] truncate">{(s.items || []).map(i => `${i.quantity}x ${(i.product_name || i.name)}`).join(', ') || '-'}</td>
                                                         <td class="px-6 py-4 text-right font-bold text-lg whitespace-nowrap">R$ {s.total.toFixed(2)}</td>
                                                         <td class="px-6 py-4 text-center">
-                                                            {s.origin === 'Online' && !s.tracking_code ? (
+                                                            {s.tracking_code ? (
+                                                                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded uppercase tracking-wider">{s.tracking_code}</span>
+                                                            ) : s.origin === 'Online' && s.shipping_service === 'RETIRADA' ? (
+                                                                <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded uppercase tracking-wider">Retirada</span>
+                                                            ) : s.origin === 'Online' && s.shipping_service && s.customer_cep ? (
                                                                 <button onClick={() => generateLabel(s.id)} class="text-[10px] md:text-xs bg-moriah-brown hover:bg-moriah-dark px-3 py-1.5 rounded-lg text-white font-bold transition-all shadow-sm w-full whitespace-nowrap">
                                                                     Gerar Etiqueta
                                                                 </button>
-                                                            ) : s.tracking_code ? (
-                                                                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded uppercase tracking-wider">{s.tracking_code}</span>
                                                             ) : (
                                                                 <span class="text-xs text-stone-300">-</span>
                                                             )}
