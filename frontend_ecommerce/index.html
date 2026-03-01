@@ -971,7 +971,10 @@
                                 customerPhone: customerData.phone,
                                 customerCep: customerData.postalCode,
                                 customerAddressNumber: customerData.addressNumber,
-                                cartItems: cart,
+                                cartItems: cart.map(item => ({
+                                    ...item,
+                                    name: item.grind ? `${item.name} (${item.grind === 'moido' ? 'Pó/Moído' : 'Grão'})` : item.name
+                                })),
                                 totalAmount: finalTotal,
                                 billingType: paymentMethod,
                                 cardData: paymentMethod === 'CREDIT_CARD' ? {
