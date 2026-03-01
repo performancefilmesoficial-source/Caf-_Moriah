@@ -367,12 +367,10 @@
                                     <div className="flex items-center gap-1">
                                         <label className={`flex flex-1 items-center justify-center gap-1.5 py-2 px-3 rounded-xl cursor-pointer transition-all text-sm font-bold border ${grind === 'grao' ? 'bg-moriah-orange text-white border-moriah-orange shadow-sm' : 'bg-white text-stone-500 border-stone-200 hover:border-moriah-orange'}`}>
                                             <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="12" rx="5" ry="8" transform="rotate(-30 12 12)" /><path d="M12 4c1 2 1 8-1 12" /></svg><span>Gr&#xE3;o</span>
-                                            {hasPriceDiff && <span className="text-[10px] opacity-80">R${product.price.toFixed(2).replace('.', ',')}</span>}
                                             <input type="radio" name={`grind-${product.id}`} value="grao" className="hidden" onChange={() => setGrind('grao')} checked={grind === 'grao'} />
                                         </label>
                                         <label className={`flex flex-1 items-center justify-center gap-1.5 py-2 px-3 rounded-xl cursor-pointer transition-all text-sm font-bold border ${grind === 'moido' ? 'bg-moriah-orange text-white border-moriah-orange shadow-sm' : 'bg-white text-stone-500 border-stone-200 hover:border-moriah-orange'}`}>
                                             <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 21h10" /><path d="M10 21V8l-3 2.5" /><path d="M14 21V8l3 2.5" /><rect x="8" y="5" width="8" height="3" rx="1" /><circle cx="10" cy="2.5" r="1" /><circle cx="14" cy="2.5" r="1" /></svg><span>Mo&#xED;do</span>
-                                            {hasPriceDiff && <span className="text-[10px] opacity-80">R${priceMoido.toFixed(2).replace('.', ',')}</span>}
                                             <input type="radio" name={`grind-${product.id}`} value="moido" className="hidden" onChange={() => setGrind('moido')} checked={grind === 'moido'} />
                                         </label>
                                     </div>
@@ -885,13 +883,11 @@
                                             <label className={`flex flex-1 flex-col items-center gap-1 py-3 px-4 rounded-xl cursor-pointer transition-all border-2 ${grind === 'grao' ? 'border-moriah-orange bg-moriah-orange/5' : 'border-stone-200 hover:border-moriah-orange/50'}`}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-moriah-brown" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="12" rx="5" ry="8" transform="rotate(-30 12 12)" /><path d="M12 4c1 2 1 8-1 12" /></svg>
                                                 <span className="text-sm font-bold text-stone-700">Grão</span>
-                                                <span className="text-lg font-bold text-moriah-brown">R$ {selectedProduct.price.toFixed(2).replace('.', ',')}</span>
                                                 <input type="radio" value="grao" className="hidden" onChange={() => setGrind('grao')} checked={grind === 'grao'} />
                                             </label>
                                             <label className={`flex flex-1 flex-col items-center gap-1 py-3 px-4 rounded-xl cursor-pointer transition-all border-2 ${grind === 'moido' ? 'border-moriah-orange bg-moriah-orange/5' : 'border-stone-200 hover:border-moriah-orange/50'}`}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-moriah-brown" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 21h10" /><path d="M10 21V8l-3 2.5" /><path d="M14 21V8l3 2.5" /><rect x="8" y="5" width="8" height="3" rx="1" /><circle cx="10" cy="2.5" r="1" /><circle cx="14" cy="2.5" r="1" /></svg>
                                                 <span className="text-sm font-bold text-stone-700">Moído</span>
-                                                <span className="text-lg font-bold text-moriah-brown">R$ {priceMoido.toFixed(2).replace('.', ',')}</span>
                                                 <input type="radio" value="moido" className="hidden" onChange={() => setGrind('moido')} checked={grind === 'moido'} />
                                             </label>
                                         </div>
