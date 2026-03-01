@@ -76,15 +76,29 @@ async function setupDatabase() {
     if (isMysql) {
         const mysql = require('mysql2/promise');
         console.log('Conectando ao MySQL na nuvem...');
-        const pool = mysql.createPool(process.env.DATABASE_URL);
+
+        // Parse do DATABASE_URL manualmente para garantir charset correto
+        const pool = mysql.createPool({
+            uri: process.env.DATABASE_URL,
+            charset: 'utf8mb4',
+            waitForConnections: true,
+            connectionLimit: 10
+        });
 
         dbUtil = {
+            // query: para SELECT — usa pool.query (aceita prepared statements com arrays)
             query: async (sql, params = []) => {
-                // MySQL2 usa ? para params, igual ao sqlite3, mas mysql não suporta AUTOINCREMENT (é AUTO_INCREMENT) e DATETIME DEFAULT CURRENT_TIMESTAMP funciona normal.
                 const [rows] = await pool.query(sql, params);
                 return [rows];
             },
+            // run: para DML (INSERT/UPDATE/DELETE) — usa pool.execute (mais seguro para params)
             run: async (sql, params = []) => {
+                // DDL (CREATE TABLE, ALTER TABLE, MODIFY, etc.) usa pool.query pois pool.execute não suporta DDL
+                const isDDL = /^\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME)/i.test(sql);
+                if (isDDL) {
+                    const [result] = await pool.query(sql, params);
+                    return [{ insertId: result.insertId || 0, changes: result.affectedRows || 0 }];
+                }
                 const [result] = await pool.execute(sql, params);
                 return [{ insertId: result.insertId, changes: result.affectedRows }];
             },
@@ -120,6 +134,8 @@ async function setupDatabase() {
 async function initTables(dbUtil, isMysql) {
     const autoInc = isMysql ? 'AUTO_INCREMENT' : 'AUTOINCREMENT';
 
+    console.log('[DB] Criando tabelas se não existirem...');
+
     await dbUtil.run(`CREATE TABLE IF NOT EXISTS products (
         id INTEGER PRIMARY KEY ${autoInc},
         name TEXT NOT NULL,
@@ -136,14 +152,14 @@ async function initTables(dbUtil, isMysql) {
         sell_online INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
-
+    console.log('[DB] Tabela products: OK');
 
     await dbUtil.run(`CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY ${autoInc},
         total REAL NOT NULL,
         method TEXT NOT NULL,
-        origin TEXT DEFAULT 'Físico',
-        status TEXT DEFAULT 'Concluído',
+        origin TEXT DEFAULT 'Fisico',
+        status TEXT DEFAULT 'Concluido',
         payment_id TEXT,
         customer_phone TEXT,
         customer_name TEXT,
@@ -156,8 +172,9 @@ async function initTables(dbUtil, isMysql) {
         tracking_code TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+    console.log('[DB] Tabela sales: OK');
 
-    // Adiciona colunas a bancos já existentes (não vai falhar se as colunas já existirem no MySQL por causa do IGNORE ou exception ignorada)
+    // Adiciona colunas a bancos já existentes (falha silenciosa se já existirem)
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_name TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_email TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_cpf TEXT'); } catch (e) { }
@@ -166,12 +183,9 @@ async function initTables(dbUtil, isMysql) {
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_cost REAL DEFAULT 0'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_service TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN tracking_code TEXT'); } catch (e) { }
-    // Novos campos de produtos
     try { await dbUtil.run('ALTER TABLE products ADD COLUMN price_moido REAL DEFAULT 0'); } catch (e) { }
-    // Expande image_url para MEDIUMTEXT para suportar Base64 (apenas MySQL, SQLite não precisa)
     try { await dbUtil.run('ALTER TABLE products MODIFY COLUMN image_url MEDIUMTEXT'); } catch (e) { }
 
-    // FOREIGN KEY funciona em ambos
     await dbUtil.run(`CREATE TABLE IF NOT EXISTS sale_items (
         id INTEGER PRIMARY KEY ${autoInc},
         sale_id INTEGER,
@@ -180,25 +194,28 @@ async function initTables(dbUtil, isMysql) {
         quantity INTEGER,
         price REAL
     )`);
+    console.log('[DB] Tabela sale_items: OK');
 
     await dbUtil.run(`CREATE TABLE IF NOT EXISTS site_settings (
         id INTEGER PRIMARY KEY ${autoInc},
-        hero_title TEXT DEFAULT 'O Café dos Seus Sonhos',
-        hero_subtitle TEXT DEFAULT 'Experiência Sensorial',
-        hero_text TEXT DEFAULT 'Grãos selecionados das melhores origens do Brasil, torrados artesanalmente para despertar todos os seus sentidos.',
-        hero_video TEXT DEFAULT 'https://cdn.pixabay.com/video/2016/06/17/3494-171876527_large.mp4',
-        about_title TEXT DEFAULT 'Descubra Nossa História',
-        about_subtitle TEXT DEFAULT 'Tradição & Afeto',
-        about_text_1 TEXT DEFAULT 'Nascida do amor profundo pelos grãos especiais e do desejo de levar a autêntica experiência das fazendas brasileiras diretamente para a sua xícara. O Moriah Café é mais do que uma marca, é a celebração da nossa herança.',
-        about_text_2 TEXT DEFAULT 'Trabalhamos lado a lado com pequenos produtores, garantindo grãos de origem controlada e qualidade máxima. Nossa torra, feita de forma minuciosa e artesanal, respeita o tempo de cada variedade para extrair as melhores notas e aromas.',
-        about_image TEXT DEFAULT 'https://images.unsplash.com/photo-1611162458324-aae1eb4129a4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80',
+        hero_title TEXT,
+        hero_subtitle TEXT,
+        hero_text TEXT,
+        hero_video TEXT,
+        about_title TEXT,
+        about_subtitle TEXT,
+        about_text_1 TEXT,
+        about_text_2 TEXT,
+        about_image TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+    console.log('[DB] Tabela site_settings: OK');
 
     const [rows] = await dbUtil.query("SELECT COUNT(*) as count FROM site_settings");
     if (rows[0].count === 0) {
-        await dbUtil.run("INSERT INTO site_settings (hero_title) VALUES ('O Café dos Seus Sonhos')");
+        await dbUtil.run("INSERT INTO site_settings (hero_title) VALUES ('O Cafe dos Seus Sonhos')");
     }
+    console.log('[DB] Inicializacao concluida com sucesso!');
 }
 
 // Inicializa os bancos antes das rotas
