@@ -380,9 +380,6 @@
                             <div className={`mt-${isCoffee ? '0' : 'auto'} pt-4 flex items-center justify-between border-t border-stone-100`}>
                                 <div>
                                     <span className="text-2xl font-bold text-moriah-brown transition-all duration-200">R$ {currentPrice.toFixed(2).replace('.', ',')}</span>
-                                    {hasPriceDiff && grind === 'moido' && currentPrice !== product.price && (
-                                        <span className="text-xs text-stone-400 line-through ml-2">R$ {product.price.toFixed(2).replace('.', ',')}</span>
-                                    )}
                                 </div>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); addToCart({ ...product, price: currentPrice }, isCoffee ? grind : null); }}
@@ -858,9 +855,6 @@
 
                                 <div className="text-3xl font-bold text-moriah-brown mb-2 pb-2 border-b border-stone-100 flex items-baseline gap-3">
                                     <span className="transition-all duration-200">R$ {currentPrice.toFixed(2).replace('.', ',')}</span>
-                                    {hasPriceDiff && grind === 'moido' && currentPrice !== selectedProduct.price && (
-                                        <span className="text-lg text-stone-400 line-through font-normal">R$ {selectedProduct.price.toFixed(2).replace('.', ',')}</span>
-                                    )}
                                 </div>
                                 {hasPriceDiff && (
                                     <p className="text-xs text-moriah-orange font-bold uppercase tracking-wider mb-6">
