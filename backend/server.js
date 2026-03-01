@@ -1,9 +1,7 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const nodemailer = require('nodemailer');
 const multer = require('multer');
-const fs = require('fs');
 const csv = require('csv-parser');
 const axios = require('axios');
 require('dotenv').config();
@@ -184,7 +182,8 @@ async function initTables(dbUtil, isMysql) {
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_service TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN tracking_code TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE products ADD COLUMN price_moido REAL DEFAULT 0'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE products MODIFY COLUMN image_url MEDIUMTEXT'); } catch (e) { }
+    // MODIFY COLUMN é sintaxe MySQL — só executa quando conectado ao MySQL
+    if (isMysql) { try { await dbUtil.run('ALTER TABLE products MODIFY COLUMN image_url MEDIUMTEXT'); } catch (e) { } }
 
     await dbUtil.run(`CREATE TABLE IF NOT EXISTS sale_items (
         id INTEGER PRIMARY KEY ${autoInc},
@@ -202,13 +201,20 @@ async function initTables(dbUtil, isMysql) {
         hero_subtitle TEXT,
         hero_text TEXT,
         hero_video TEXT,
+        hero_video_opacity TEXT,
+        hero_text_align TEXT,
         about_title TEXT,
         about_subtitle TEXT,
         about_text_1 TEXT,
         about_text_2 TEXT,
         about_image TEXT,
+        about_image_align TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+    // Migrations para bancos já existentes (falha silenciosa se coluna já existir)
+    try { await dbUtil.run('ALTER TABLE site_settings ADD COLUMN hero_video_opacity TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE site_settings ADD COLUMN hero_text_align TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE site_settings ADD COLUMN about_image_align TEXT'); } catch (e) { }
     console.log('[DB] Tabela site_settings: OK');
 
     const [rows] = await dbUtil.query("SELECT COUNT(*) as count FROM site_settings");
@@ -319,62 +325,58 @@ app.delete('/api/products/:id', async (req, res) => {
 });
 
 // 5. Importar produtos via CSV (Nuvemshop)
-app.post('/api/products/import', upload.single('file'), (req, res) => {
+app.post('/api/products/import', upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
     }
 
-    const results = [];
-    let separator = ';'; // Padrão Nuvemshop
+    try {
+        // multer usa memoryStorage — arquivo fica em req.file.buffer (sem path em disco)
+        const { Readable } = require('stream');
+        const results = [];
+        const separator = ';'; // Padrão Nuvemshop
 
-    fs.createReadStream(req.file.path)
-        .pipe(csv({ separator: separator, mapHeaders: ({ header }) => header.trim() }))
-        .on('data', (data) => results.push(data))
-        .on('end', async () => {
-            fs.unlinkSync(req.file.path); // Limpa arquivo temp
-
-            let insertedCount = 0;
-            try {
-                // Tenta analisar se o CSV usou vírgula ao invés de ponto e vírgula
-                // O csv-parser geralmente lida bem se passarmos as colunas certas, 
-                // para garantir vamos buscar nas chaves do objeto de cada linha.
-
-                for (const row of results) {
-                    const getVal = (possibleNames) => {
-                        const key = Object.keys(row).find(k => possibleNames.some(p => k.toLowerCase().includes(p)));
-                        return key ? row[key] : null;
-                    };
-
-                    const name = getVal(['nome', 'name', 'produto']);
-                    if (!name) continue; // Ignora linha sem nome (pode ser linha vazia)
-
-                    const sku = getVal(['sku', 'código', 'cdigo']) || `IMP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-                    const cost = parseFloat(String(getVal(['custo', 'cost']) || '0').replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
-                    const price = parseFloat(String(getVal(['preço', 'price', 'valor', 'preo']) || '0').replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
-                    const stock = parseInt(getVal(['estoque', 'stock', 'quantidade']) || '0', 10);
-                    const category = getVal(['categoria', 'category']) || 'Importado';
-                    const image_url = getVal(['imagem', 'image', 'url', 'foto']) || '';
-                    const description = getVal(['descrição', 'description', 'detalhes', 'descrio']) || '';
-                    const weight_kg = parseFloat(String(getVal(['peso', 'weight']) || '0').replace(',', '.'));
-                    const weight_grams = Math.round(weight_kg * 1000) || 250;
-
-                    await dbUtil.run(
-                        'INSERT INTO products (name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                        [name, category, cost, price, stock, 5, sku, image_url, description, weight_grams, 1]
-                    );
-                    insertedCount++;
-                }
-
-                res.status(200).json({ message: `Sucesso! \${insertedCount} produtos importados da planilha.`, count: insertedCount });
-            } catch (err) {
-                console.error('Erro na importação de CSV:', err);
-                res.status(500).json({ error: 'Erro ao processar e salvar importação no banco de dados.' });
-            }
-        })
-        .on('error', (err) => {
-            fs.unlinkSync(req.file.path);
-            res.status(500).json({ error: 'Erro ao ler o arquivo CSV.' });
+        await new Promise((resolve, reject) => {
+            Readable.from(req.file.buffer)
+                .pipe(csv({ separator, mapHeaders: ({ header }) => header.trim() }))
+                .on('data', (data) => results.push(data))
+                .on('end', resolve)
+                .on('error', reject);
         });
+
+        let insertedCount = 0;
+
+        for (const row of results) {
+            const getVal = (possibleNames) => {
+                const key = Object.keys(row).find(k => possibleNames.some(p => k.toLowerCase().includes(p)));
+                return key ? row[key] : null;
+            };
+
+            const name = getVal(['nome', 'name', 'produto']);
+            if (!name) continue; // Ignora linha sem nome (pode ser linha vazia)
+
+            const sku = getVal(['sku', 'código', 'cdigo']) || `IMP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            const cost = parseFloat(String(getVal(['custo', 'cost']) || '0').replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+            const price = parseFloat(String(getVal(['preço', 'price', 'valor', 'preo']) || '0').replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+            const stock = parseInt(getVal(['estoque', 'stock', 'quantidade']) || '0', 10);
+            const category = getVal(['categoria', 'category']) || 'Importado';
+            const image_url = getVal(['imagem', 'image', 'url', 'foto']) || '';
+            const description = getVal(['descrição', 'description', 'detalhes', 'descrio']) || '';
+            const weight_kg = parseFloat(String(getVal(['peso', 'weight']) || '0').replace(',', '.'));
+            const weight_grams = Math.round(weight_kg * 1000) || 250;
+
+            await dbUtil.run(
+                'INSERT INTO products (name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [name, category, cost, price, stock, 5, sku, image_url, description, weight_grams, 1]
+            );
+            insertedCount++;
+        }
+
+        res.status(200).json({ message: `Sucesso! ${insertedCount} produtos importados da planilha.`, count: insertedCount });
+    } catch (err) {
+        console.error('Erro na importação de CSV:', err);
+        res.status(500).json({ error: 'Erro ao processar e salvar importação no banco de dados.' });
+    }
 });
 
 // ---- CONFIGURAÇÕES DO SITE (CMS E-COMMERCE) ----
@@ -432,14 +434,23 @@ app.get('/api/sales', async (req, res) => {
     try {
         const [sales] = await dbUtil.query('SELECT * FROM sales ORDER BY created_at DESC LIMIT 100');
 
-        // Em um sistema real e grande, as vendas seriam paginadas e fariamos JOIN para trazer os itens de cada venda de uma vez.
-        // Para simplificar essa transição do localStorage para o banco:
-        for (let i = 0; i < sales.length; i++) {
-            const [items] = await dbUtil.query(
-                'SELECT si.*, p.name FROM sale_items si JOIN products p ON si.product_id = p.id WHERE si.sale_id = ?',
-                [sales[i].id]
+        if (sales.length > 0) {
+            // Busca todos os itens em 1 query (evita N+1).
+            // LEFT JOIN garante que itens de produtos excluídos ainda aparecem (usa product_name salvo).
+            const placeholders = sales.map(() => '?').join(',');
+            const saleIds = sales.map(s => s.id);
+            const [allItems] = await dbUtil.query(
+                `SELECT si.*, COALESCE(p.name, si.product_name) as name FROM sale_items si LEFT JOIN products p ON si.product_id = p.id WHERE si.sale_id IN (${placeholders})`,
+                saleIds
             );
-            sales[i].items = items;
+            const itemsBySaleId = {};
+            for (const item of allItems) {
+                if (!itemsBySaleId[item.sale_id]) itemsBySaleId[item.sale_id] = [];
+                itemsBySaleId[item.sale_id].push(item);
+            }
+            for (const sale of sales) {
+                sale.items = itemsBySaleId[sale.id] || [];
+            }
         }
 
         res.json(sales);
@@ -621,38 +632,38 @@ app.post('/api/checkout', async (req, res) => {
             encodedImage = qrCodeResponse.data.encodedImage;
         }
 
-        // Enviar Email Tentar
+        // 4. Salvar venda no Banco de Dados ANTES de responder ao cliente
+        // (se salvar depois e o banco falhar, o cliente pagou mas a venda não existe no PDV)
         try {
+            await dbUtil.run(process.env.DATABASE_URL ? 'START TRANSACTION' : 'BEGIN TRANSACTION');
+            const statusInicial = billingType === 'CREDIT_CARD' ? 'Pago' : 'Pendente';
+            const result = await dbUtil.run(
+                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, shipping_cost, shipping_service) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS']
+            );
+            const saleId = result[0].insertId;
+            for (const item of cartItems) {
+                await dbUtil.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                    [saleId, item.id, item.name, item.quantity, item.price]);
+                await dbUtil.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+            }
+            await dbUtil.run('COMMIT');
+        } catch (dbErr) {
+            await dbUtil.run('ROLLBACK').catch(() => {});
+            console.error("Erro ao salvar venda no banco após pagamento aprovado:", dbErr);
+            // Pagamento foi aprovado mas não salvou — loga para investigação manual
+        }
+
+        // Enviar e-mail de confirmação (fire-and-forget — não bloqueia a resposta)
+        if (process.env.SMTP_USER) {
             const mailOptions = {
                 from: '"Moriah Café Especial" <atendimento@moriahcafe.com>',
                 to: customerEmail,
                 subject: 'Sua compra no Moriah Café! ☕',
                 html: `<p>Olá ${customerName}, sua compra de R$ ${totalAmount} foi registrada no nosso sistema!</p><br><p><a href="${invoiceUrl}">Acessar Fatura ${billingType}</a></p>`
             };
-            if (process.env.SMTP_USER) transporter.sendMail(mailOptions).catch(() => { });
-        } catch (mailErr) { }
-
-        // 4. Salvar venda no Banco de Dados
-        (async () => {
-            try {
-                await dbUtil.run(process.env.DATABASE_URL ? 'START TRANSACTION' : 'BEGIN TRANSACTION');
-                const statusInicial = 'Pendente';
-                const result = await dbUtil.run(
-                    'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, shipping_cost, shipping_service) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS']
-                );
-                const saleId = result[0].insertId;
-                for (const item of cartItems) {
-                    await dbUtil.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
-                        [saleId, item.id, item.name, item.quantity, item.price]);
-                    await dbUtil.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
-                }
-                await dbUtil.run('COMMIT');
-            } catch (dbErr) {
-                await dbUtil.run('ROLLBACK');
-                console.error("Erro ao salvar no banco:", dbErr);
-            }
-        })();
+            transporter.sendMail(mailOptions).catch(() => { });
+        }
 
         res.status(200).json({
             success: true,
@@ -701,7 +712,8 @@ app.post('/api/shipping/calculate', async (req, res) => {
         let totalWeight = 0;
         cartItems.forEach(item => { totalWeight += ((item.weight_grams || 250) * item.quantity); });
 
-        let weightKg = (totalWeight / 1000).toFixed(2);
+        // parseFloat garante número (toFixed retorna string, causaria bug na API do Melhor Envio)
+        let weightKg = parseFloat((totalWeight / 1000).toFixed(2));
         if (weightKg < 0.1) weightKg = 0.3; // Mín. Correios
 
         const payload = {
