@@ -711,11 +711,44 @@ app.post('/api/checkout', async (req, res) => {
 const MELHORENVIO_TOKEN = process.env.MELHORENVIO_TOKEN;
 const ORIGIN_CEP = '44002622';
 
+// Verifica se o CEP pertence a Feira de Santana (44000-000 a 44149-999)
+function isFeiraDeSantanaCep(cep) {
+    const num = parseInt(String(cep).replace(/\D/g, ''), 10);
+    return num >= 44000000 && num <= 44149999;
+}
+
 app.post('/api/shipping/calculate', async (req, res) => {
     const { destinationCep, cartItems } = req.body;
 
     if (!destinationCep || destinationCep.length < 8) {
         return res.status(400).json({ error: 'CEP Inválido' });
+    }
+
+    // CEP de Feira de Santana → opções de entrega local
+    if (isFeiraDeSantanaCep(destinationCep)) {
+        const cartTotal = (cartItems || []).reduce((acc, item) => acc + (parseFloat(item.price) * item.quantity), 0);
+        const padraoGratis = cartTotal >= 100;
+        return res.json({
+            success: true,
+            localDelivery: true,
+            services: [
+                {
+                    id: 'feira-expressa',
+                    name: 'Expressa Moriah ☕',
+                    price: '12.00',
+                    delivery_time: 'Até 2 horas',
+                    local: true
+                },
+                {
+                    id: 'feira-padrao',
+                    name: 'Entrega Padrão Feira',
+                    price: padraoGratis ? '0.00' : '7.00',
+                    delivery_time: 'Até 24h úteis',
+                    local: true,
+                    free: padraoGratis
+                }
+            ]
+        });
     }
 
     try {

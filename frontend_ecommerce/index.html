@@ -604,6 +604,7 @@
                 const [shippingCep, setShippingCep] = React.useState('');
                 const [shippingOptions, setShippingOptions] = React.useState([]);
                 const [isCalculatingShipping, setIsCalculatingShipping] = React.useState(false);
+                const [isLocalDelivery, setIsLocalDelivery] = React.useState(false);
                 // shippingCost e shippingService vêm do App (via props implícitas de closure)
 
                 const handleCalculateShipping = async (e) => {
@@ -616,6 +617,7 @@
                     setShippingOptions([]);
                     setShippingCost(0);
                     setShippingService('');
+                    setIsLocalDelivery(false);
 
                     try {
                         const res = await fetch('/api/shipping/calculate', {
@@ -628,12 +630,13 @@
 
                         if (data.success && data.services && data.services.length > 0) {
                             setShippingOptions(data.services);
+                            setIsLocalDelivery(data.localDelivery || false);
                         } else {
                             alert('Nao ha transportadoras disponiveis para este CEP no momento.');
                             setShippingCost(0);
                         }
                     } catch (error) {
-                        alert('Erro ao calcular frete dos Correios.');
+                        alert('Erro ao calcular frete.');
                         setShippingCost(0);
                     } finally {
                         setIsCalculatingShipping(false);
@@ -709,12 +712,13 @@
                                     {/* Frete */}
                                     <div className="p-6 border-b border-stone-100 bg-stone-50/50">
                                         <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-3 flex items-center gap-2">
-                                            <LucideIcon name="truck" className="w-4 h-4" /> Calcular Frete (Correios)
+                                            <LucideIcon name="truck" className="w-4 h-4" />
+                                            {isLocalDelivery ? 'Entrega Local — Feira de Santana' : 'Calcular Frete'}
                                         </p>
                                         <form onSubmit={handleCalculateShipping} className="flex gap-2 mb-4">
                                             <input
                                                 type="text"
-                                                placeholder="CEP (00000000)"
+                                                placeholder="Digite seu CEP"
                                                 value={shippingCep}
                                                 onChange={(e) => setShippingCep(e.target.value.replace(/\D/g, ''))}
                                                 className="flex-1 px-4 py-2 bg-white border border-stone-200 rounded-xl text-sm focus:outline-none focus:border-moriah-gold transition-colors"
@@ -725,41 +729,74 @@
                                             </button>
                                         </form>
 
-                                        {/* Retirada na Loja */}
+                                        {/* Retirada na Loja — sempre visível */}
                                         <label
-                                            className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-colors mb-2 ${shippingService === 'RETIRADA' ? 'border-moriah-green bg-moriah-green/5' : 'border-stone-200 hover:border-moriah-green/50'
-                                                }`}
-                                            onClick={() => { setShippingCost(0); setShippingService('RETIRADA'); setShippingOptions(prev => prev); }}
+                                            className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-colors mb-2 ${shippingService === 'RETIRADA' ? 'border-moriah-green bg-moriah-green/5' : 'border-stone-200 hover:border-moriah-green/50'}`}
+                                            onClick={() => { setShippingCost(0); setShippingService('RETIRADA'); }}
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${shippingService === 'RETIRADA' ? 'border-moriah-green' : 'border-stone-300'}`}>
+                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${shippingService === 'RETIRADA' ? 'border-moriah-green' : 'border-stone-300'}`}>
                                                     {shippingService === 'RETIRADA' && <div className="w-2 h-2 bg-moriah-green rounded-full"></div>}
                                                 </div>
                                                 <div>
                                                     <p className="font-bold text-sm text-moriah-green">🏪 Retirada na Loja</p>
-                                                    <p className="text-[10px] uppercase text-stone-500 font-bold">Feira dos Importados de Feira de Santana</p>
+                                                    <p className="text-[10px] uppercase text-stone-500 font-bold">Feira dos Importados — Feira de Santana</p>
                                                 </div>
                                             </div>
-                                            <span className="font-bold text-moriah-green">GRÁTIS</span>
+                                            <span className="font-bold text-moriah-green text-sm">GRÁTIS</span>
                                         </label>
 
-                                        {shippingOptions.length > 0 && (
+                                        {/* Opções locais de Feira de Santana */}
+                                        {isLocalDelivery && shippingOptions.length > 0 && (
+                                            <div className="space-y-2 pt-2 border-t border-moriah-orange/20">
+                                                <p className="text-[10px] font-bold text-moriah-orange uppercase tracking-wider flex items-center gap-1 py-1">
+                                                    <LucideIcon name="map-pin" className="w-3 h-3" /> Entrega em Feira de Santana
+                                                </p>
+                                                {shippingOptions.map(opt => {
+                                                    const isSelected = shippingService === opt.name;
+                                                    const isFree = opt.free || parseFloat(opt.price) === 0;
+                                                    return (
+                                                        <label key={opt.id} onClick={() => { setShippingCost(parseFloat(opt.price)); setShippingService(opt.name); }}
+                                                            className={`flex items-center justify-between p-3 border-2 rounded-xl cursor-pointer transition-all ${isSelected ? 'border-moriah-orange bg-moriah-orange/5' : 'border-stone-200 hover:border-moriah-orange/50'}`}>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? 'border-moriah-orange' : 'border-stone-300'}`}>
+                                                                    {isSelected && <div className="w-2 h-2 bg-moriah-orange rounded-full"></div>}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-bold text-sm text-moriah-brown">{opt.name}</p>
+                                                                    <p className="text-[10px] uppercase text-stone-500 font-bold tracking-wide">{opt.delivery_time}</p>
+                                                                </div>
+                                                            </div>
+                                                            <span className={`font-bold text-sm ${isFree ? 'text-moriah-green' : 'text-moriah-brown'}`}>
+                                                                {isFree ? 'GRÁTIS' : `R$ ${String(opt.price).replace('.', ',')}`}
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Opções Correios/Melhor Envio (CEP fora de Feira) */}
+                                        {!isLocalDelivery && shippingOptions.length > 0 && (
                                             <div className="space-y-2 pt-2 border-t border-stone-200">
-                                                {shippingOptions.map(opt => (
-                                                    <label key={opt.id} className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-colors ${shippingService !== 'RETIRADA' && shippingCost == opt.price ? 'border-moriah-orange bg-moriah-orange/5' : 'border-stone-200 hover:border-moriah-gold'}`}>
-                                                        <div className="flex items-center gap-3">
-                                                            <input type="radio" name="shipping" className="hidden" onChange={() => handleSelectShipping(opt)} checked={shippingService !== 'RETIRADA' && shippingCost == opt.price} />
-                                                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${shippingService !== 'RETIRADA' && shippingCost == opt.price ? 'border-moriah-orange' : 'border-stone-300'}`}>
-                                                                {shippingService !== 'RETIRADA' && shippingCost == opt.price && <div className="w-2 h-2 bg-moriah-orange rounded-full"></div>}
+                                                {shippingOptions.map(opt => {
+                                                    const isSelected = shippingService === opt.name;
+                                                    return (
+                                                        <label key={opt.id} onClick={() => { setShippingCost(parseFloat(opt.price)); setShippingService(opt.name); }}
+                                                            className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-colors ${isSelected ? 'border-moriah-orange bg-moriah-orange/5' : 'border-stone-200 hover:border-moriah-gold'}`}>
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? 'border-moriah-orange' : 'border-stone-300'}`}>
+                                                                    {isSelected && <div className="w-2 h-2 bg-moriah-orange rounded-full"></div>}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-bold text-sm text-moriah-brown">{opt.name.replace(' Correios', '')}</p>
+                                                                    <p className="text-[10px] uppercase text-stone-500 font-bold">{opt.delivery_time || 'Consulte o prazo'}</p>
+                                                                </div>
                                                             </div>
-                                                            <div>
-                                                                <p className="font-bold text-sm text-moriah-brown">{opt.name.replace(' Correios', '')}</p>
-                                                                <p className="text-[10px] uppercase text-stone-500 font-bold">{opt.delivery_time || 'Consulte o prazo'}</p>
-                                                            </div>
-                                                        </div>
-                                                        <span className="font-bold text-moriah-green">R$ {opt.price.replace('.', ',')}</span>
-                                                    </label>
-                                                ))}
+                                                            <span className="font-bold text-moriah-green text-sm">R$ {String(opt.price).replace('.', ',')}</span>
+                                                        </label>
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
@@ -772,8 +809,12 @@
                                         </div>
                                         <div className="flex justify-between text-stone-500 text-sm">
                                             <span>Frete</span>
-                                            <span className={shippingCost === 0 ? "text-stone-400 italic" : "text-moriah-green"}>
-                                                {shippingCost === 0 ? "A calcular" : `+ R$ ${shippingCost.toFixed(2).replace('.', ',')}`}
+                                            <span className={!shippingService ? "text-stone-400 italic" : shippingCost === 0 ? "text-moriah-green font-bold" : "text-moriah-green"}>
+                                                {!shippingService
+                                                    ? "A calcular"
+                                                    : shippingCost === 0
+                                                        ? "GRÁTIS"
+                                                        : `+ R$ ${shippingCost.toFixed(2).replace('.', ',')}`}
                                             </span>
                                         </div>
                                         <div className="pt-3 border-t border-stone-200 flex justify-between items-center mb-6">
@@ -782,7 +823,7 @@
                                         </div>
                                         <button
                                             onClick={() => {
-                                                if (shippingService !== 'RETIRADA' && shippingCost === 0 && cartTotal > 0)
+                                                if (!shippingService && cartTotal > 0)
                                                     return alert('Selecione uma opção de entrega ou Retirada na Loja');
                                                 setIsCartOpen(false);
                                                 setIsCheckingOut(true);
