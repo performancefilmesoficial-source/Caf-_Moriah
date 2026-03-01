@@ -200,14 +200,14 @@ async function initTables(dbUtil, isMysql) {
         hero_title TEXT,
         hero_subtitle TEXT,
         hero_text TEXT,
-        hero_video TEXT,
+        hero_video MEDIUMTEXT,
         hero_video_opacity TEXT,
         hero_text_align TEXT,
         about_title TEXT,
         about_subtitle TEXT,
         about_text_1 TEXT,
         about_text_2 TEXT,
-        about_image TEXT,
+        about_image MEDIUMTEXT,
         about_image_align TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
@@ -215,6 +215,11 @@ async function initTables(dbUtil, isMysql) {
     try { await dbUtil.run('ALTER TABLE site_settings ADD COLUMN hero_video_opacity TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE site_settings ADD COLUMN hero_text_align TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE site_settings ADD COLUMN about_image_align TEXT'); } catch (e) { }
+    // Ampliar colunas para MEDIUMTEXT no MySQL (suporta Base64 de imagens/vídeos até ~16MB)
+    if (isMysql) {
+        try { await dbUtil.run('ALTER TABLE site_settings MODIFY COLUMN hero_video MEDIUMTEXT'); } catch (e) { }
+        try { await dbUtil.run('ALTER TABLE site_settings MODIFY COLUMN about_image MEDIUMTEXT'); } catch (e) { }
+    }
     console.log('[DB] Tabela site_settings: OK');
 
     const [rows] = await dbUtil.query("SELECT COUNT(*) as count FROM site_settings");
@@ -401,24 +406,31 @@ app.put('/api/site-settings', upload.fields([{ name: 'hero_video_file', maxCount
     const { hero_title, hero_subtitle, hero_text, hero_video_opacity, hero_text_align, about_title, about_subtitle, about_text_1, about_text_2, about_image_align } = req.body;
     let { hero_video, about_image } = req.body;
 
-    // Se vieram arquivos anexados, atualize as variáveis para pegar o caminho do multer:
+    // Se vieram arquivos, converte para Base64 (multer usa memoryStorage — sem path em disco)
     if (req.files) {
         if (req.files['hero_video_file'] && req.files['hero_video_file'][0]) {
-            hero_video = `/uploads/${req.files['hero_video_file'][0].filename}`;
+            const file = req.files['hero_video_file'][0];
+            hero_video = `data:${file.mimetype || 'video/mp4'};base64,${file.buffer.toString('base64')}`;
         }
         if (req.files['about_image_file'] && req.files['about_image_file'][0]) {
-            about_image = `/uploads/${req.files['about_image_file'][0].filename}`;
+            const file = req.files['about_image_file'][0];
+            about_image = `data:${file.mimetype || 'image/jpeg'};base64,${file.buffer.toString('base64')}`;
         }
     }
 
     try {
+        // Busca o ID primeiro para evitar restrição do MySQL:
+        // "You can't specify target table for update in FROM clause"
+        const [settingsRows] = await dbUtil.query('SELECT id FROM site_settings LIMIT 1');
+        const settingsId = settingsRows.length ? settingsRows[0].id : 1;
+
         await dbUtil.run(
-            `UPDATE site_settings SET 
-                hero_title=?, hero_subtitle=?, hero_text=?, hero_video=?, hero_video_opacity=?, hero_text_align=?, 
-                about_title=?, about_subtitle=?, about_text_1=?, about_text_2=?, about_image=?, about_image_align=?, 
-                updated_at=CURRENT_TIMESTAMP 
-             WHERE id = (SELECT MIN(id) FROM site_settings)`,
-            [hero_title, hero_subtitle, hero_text, hero_video, hero_video_opacity, hero_text_align, about_title, about_subtitle, about_text_1, about_text_2, about_image, about_image_align]
+            `UPDATE site_settings SET
+                hero_title=?, hero_subtitle=?, hero_text=?, hero_video=?, hero_video_opacity=?, hero_text_align=?,
+                about_title=?, about_subtitle=?, about_text_1=?, about_text_2=?, about_image=?, about_image_align=?,
+                updated_at=CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [hero_title, hero_subtitle, hero_text, hero_video, hero_video_opacity, hero_text_align, about_title, about_subtitle, about_text_1, about_text_2, about_image, about_image_align, settingsId]
         );
         res.json({ message: 'Configurações atualizadas com sucesso!', hero_video, about_image });
     } catch (error) {
