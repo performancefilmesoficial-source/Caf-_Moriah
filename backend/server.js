@@ -573,7 +573,16 @@ app.post('/api/checkout', async (req, res) => {
                 addressNumber: customerAddressNumber,
                 phone: customerPhone
             };
-            paymentPayload.remoteIp = req.socket.remoteAddress || '127.0.0.1';
+            // Extrai IP real (IPv4) — Asaas rejeita IPv6 (::1) e IPs locais
+            const rawIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+                || req.headers['x-real-ip']
+                || req.socket.remoteAddress
+                || '189.6.0.1';
+            // Converte ::ffff:x.x.x.x (IPv4-mapped IPv6) para IPv4 puro
+            const cleanIp = rawIp.replace(/^::ffff:/, '');
+            // Se ainda for um endereço IPv6 ou localhost, usa um IP público válido de fallback
+            const isValidIpv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(cleanIp) && cleanIp !== '127.0.0.1';
+            paymentPayload.remoteIp = isValidIpv4 ? cleanIp : '189.6.0.1';
         }
 
         // Criar Pagamento
@@ -637,9 +646,24 @@ app.post('/api/checkout', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Erro no checkout / Asaas:', error.response?.data || error.message);
-        const detail = error.response?.data ? JSON.stringify(error.response.data) : error.message;
-        res.status(500).json({ success: false, error: detail });
+        const asaasData = error.response?.data;
+        console.error('Erro no checkout / Asaas:', asaasData || error.message);
+
+        // Extrai mensagem amigável dos erros do Asaas
+        let friendlyError = 'Erro ao processar pagamento. Verifique seus dados e tente novamente.';
+        if (asaasData) {
+            if (asaasData.errors && Array.isArray(asaasData.errors) && asaasData.errors.length > 0) {
+                const msgs = asaasData.errors.map(e => e.description || e.code || JSON.stringify(e));
+                friendlyError = msgs.join(' | ');
+            } else if (asaasData.description) {
+                friendlyError = asaasData.description;
+            } else {
+                friendlyError = JSON.stringify(asaasData);
+            }
+        } else if (error.message) {
+            friendlyError = error.message;
+        }
+        res.status(500).json({ success: false, error: friendlyError, raw: asaasData || null });
     }
 });
 

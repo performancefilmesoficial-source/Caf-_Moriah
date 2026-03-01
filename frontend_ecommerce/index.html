@@ -367,12 +367,12 @@
                                 <div className="mt-auto mb-4 bg-stone-50 rounded-2xl p-3 border border-stone-100" onClick={e => e.stopPropagation()}>
                                     <div className="flex items-center gap-1">
                                         <label className={`flex flex-1 items-center justify-center gap-1.5 py-2 px-3 rounded-xl cursor-pointer transition-all text-sm font-bold border ${grind === 'grao' ? 'bg-moriah-orange text-white border-moriah-orange shadow-sm' : 'bg-white text-stone-500 border-stone-200 hover:border-moriah-orange'}`}>
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="12" rx="5" ry="8" transform="rotate(-30 12 12)"/><path d="M12 4c1 2 1 8-1 12"/></svg><span>Gr&#xE3;o</span>
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="12" rx="5" ry="8" transform="rotate(-30 12 12)" /><path d="M12 4c1 2 1 8-1 12" /></svg><span>Gr&#xE3;o</span>
                                             {hasPriceDiff && <span className="text-[10px] opacity-80">R${product.price.toFixed(2).replace('.', ',')}</span>}
                                             <input type="radio" name={`grind-${product.id}`} value="grao" className="hidden" onChange={() => setGrind('grao')} checked={grind === 'grao'} />
                                         </label>
                                         <label className={`flex flex-1 items-center justify-center gap-1.5 py-2 px-3 rounded-xl cursor-pointer transition-all text-sm font-bold border ${grind === 'moido' ? 'bg-moriah-orange text-white border-moriah-orange shadow-sm' : 'bg-white text-stone-500 border-stone-200 hover:border-moriah-orange'}`}>
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 21h10"/><path d="M10 21V8l-3 2.5"/><path d="M14 21V8l3 2.5"/><rect x="8" y="5" width="8" height="3" rx="1"/><circle cx="10" cy="2.5" r="1"/><circle cx="14" cy="2.5" r="1"/></svg><span>Mo&#xED;do</span>
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 21h10" /><path d="M10 21V8l-3 2.5" /><path d="M14 21V8l3 2.5" /><rect x="8" y="5" width="8" height="3" rx="1" /><circle cx="10" cy="2.5" r="1" /><circle cx="14" cy="2.5" r="1" /></svg><span>Mo&#xED;do</span>
                                             {hasPriceDiff && <span className="text-[10px] opacity-80">R${priceMoido.toFixed(2).replace('.', ',')}</span>}
                                             <input type="radio" name={`grind-${product.id}`} value="moido" className="hidden" onChange={() => setGrind('moido')} checked={grind === 'moido'} />
                                         </label>
@@ -925,9 +925,40 @@
                 const [paymentMethod, setPaymentMethod] = React.useState('PIX');
                 const [cardData, setCardData] = React.useState({ holderName: '', number: '', expiryMonth: '', expiryYear: '', ccv: '' });
                 const [pixData, setPixData] = React.useState(null);
+                const [errorMsg, setErrorMsg] = React.useState('');
 
                 const handlePayment = async (e) => {
                     e.preventDefault();
+                    setErrorMsg('');
+
+                    // Validações front-end para cartão
+                    if (paymentMethod === 'CREDIT_CARD') {
+                        const cardNum = cardData.number.replace(/\s/g, '');
+                        if (cardNum.length < 13 || cardNum.length > 19) {
+                            setErrorMsg('Número do cartão inválido. Verifique os dígitos.');
+                            return;
+                        }
+                        const month = parseInt(cardData.expiryMonth, 10);
+                        if (!month || month < 1 || month > 12) {
+                            setErrorMsg('Mês de vencimento inválido (01-12).');
+                            return;
+                        }
+                        const year = parseInt(cardData.expiryYear, 10);
+                        const currentYear = new Date().getFullYear();
+                        if (!year || year < currentYear || year > currentYear + 20) {
+                            setErrorMsg(`Ano de vencimento inválido. Use 4 dígitos (ex: ${currentYear}).`);
+                            return;
+                        }
+                        if (!cardData.ccv || cardData.ccv.length < 3) {
+                            setErrorMsg('CVV inválido.');
+                            return;
+                        }
+                        if (!cardData.holderName.trim()) {
+                            setErrorMsg('Informe o nome impresso no cartão.');
+                            return;
+                        }
+                    }
+
                     setStep('loading');
 
                     try {
@@ -944,7 +975,10 @@
                                 cartItems: cart,
                                 totalAmount: finalTotal,
                                 billingType: paymentMethod,
-                                cardData: paymentMethod === 'CREDIT_CARD' ? cardData : null,
+                                cardData: paymentMethod === 'CREDIT_CARD' ? {
+                                    ...cardData,
+                                    number: cardData.number.replace(/\s/g, '') // Remove espaços de formatação
+                                } : null,
                                 shippingCost: shippingCost,
                                 shippingService: shippingService || 'CORREIOS'
                             })
@@ -961,11 +995,12 @@
                             }
                             setCart([]);
                         } else {
-                            alert('Erro na transação: ' + (data.error || 'Verifique seus dados digitados.'));
+                            const msg = data.error || 'Verifique seus dados e tente novamente.';
+                            setErrorMsg(msg);
                             setStep(1);
                         }
                     } catch (error) {
-                        alert('Erro de conexão durante o pagamento.');
+                        setErrorMsg('Erro de conexão durante o pagamento. Tente novamente.');
                         setStep(1);
                     }
                 };
@@ -1024,7 +1059,12 @@
                                             {paymentMethod === 'CREDIT_CARD' && (
                                                 <div className="p-5 bg-stone-50 rounded-xl border border-stone-200 space-y-4 animate-in fade-in duration-300">
                                                     <input required type="text" placeholder="Nome Impresso no Cartão" value={cardData.holderName} onChange={e => setCardData({ ...cardData, holderName: e.target.value.toUpperCase() })} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg outline-none focus:border-moriah-gold text-sm" />
-                                                    <input required type="text" placeholder="Número do Cartão" value={cardData.number} onChange={e => setCardData({ ...cardData, number: e.target.value.replace(/\D/g, '') })} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg outline-none focus:border-moriah-gold text-sm" maxLength="16" />
+                                                    <input required type="text" placeholder="Número do Cartão" value={cardData.number} onChange={e => {
+                                                        // Formata com espaços a cada 4 dígitos para facilitar leitura
+                                                        const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+                                                        const formatted = raw.replace(/(\d{4})(?=\d)/g, '$1 ');
+                                                        setCardData({ ...cardData, number: formatted });
+                                                    }} className="w-full px-4 py-3 bg-white border border-stone-200 rounded-lg outline-none focus:border-moriah-gold text-sm font-mono tracking-widest" maxLength="19" />
                                                     <div className="flex gap-2">
                                                         <input required type="text" placeholder="Mês (01)" maxLength="2" value={cardData.expiryMonth} onChange={e => setCardData({ ...cardData, expiryMonth: e.target.value.replace(/\D/g, '') })} className="flex-1 px-4 py-3 bg-white border border-stone-200 rounded-lg outline-none focus:border-moriah-gold text-sm text-center" />
                                                         <span className="flex items-center text-stone-300 font-bold text-xl">/</span>
@@ -1034,7 +1074,14 @@
                                                 </div>
                                             )}
                                         </div>
-                                        <button type="submit" className="w-full mt-6 bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 text-lg disabled:opacity-50">
+
+                                        {errorMsg && (
+                                            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-start gap-2 mt-2">
+                                                <LucideIcon name="alert-circle" className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                                <span>{errorMsg}</span>
+                                            </div>
+                                        )}
+                                        <button type="submit" className="w-full mt-4 bg-moriah-green text-moriah-sand font-bold py-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 text-lg">
                                             <LucideIcon name="lock" className="w-4 h-4" />
                                             Concluir Pagamento (R$ {finalTotal.toFixed(2).replace('.', ',')})
                                         </button>
@@ -1105,7 +1152,7 @@
                                 )}
                             </div>
                         </div>
-                    </div>
+                    </div >
                 );
             };
 
