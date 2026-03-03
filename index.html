@@ -44,7 +44,21 @@
             font-family: 'Inter', sans-serif;
             background-color: #fcfcfc;
             overflow-x: hidden;
+            max-width: 100vw;
             -webkit-text-size-adjust: 100%;
+        }
+
+        /* Corrige toque em botões no iOS — sem delay de 300ms */
+        button, [role="button"], a {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            cursor: pointer;
+        }
+
+        /* Garante que nenhum elemento estoure a largura da tela */
+        *, *::before, *::after {
+            max-width: 100%;
+            box-sizing: border-box;
         }
 
         .glass-card {
@@ -836,8 +850,17 @@
                                 <div class="product-grid">
                                     {products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase())).map(p => {
                                         const hasTwoGrinds = (p.category === 'Café Grão' || p.category === 'Café Moído') && parseFloat(p.price_moido) > 0;
+                                        const handleTap = () => {
+                                            if (p.stock <= 0) return;
+                                            if (hasTwoGrinds) setGrindPickerProduct(p);
+                                            else addToCart(p);
+                                        };
                                         return (
-                                            <button key={p.id} onClick={() => hasTwoGrinds ? setGrindPickerProduct(p) : addToCart(p)} disabled={p.stock <= 0} class="flex flex-col justify-between bg-white p-4 rounded-2xl shadow-sm border border-stone-100 hover:border-moriah-brown transition-all group overflow-hidden h-32 disabled:opacity-50 text-left w-full">
+                                            <div key={p.id}
+                                                role="button"
+                                                onPointerUp={handleTap}
+                                                class={`flex flex-col justify-between bg-white p-4 rounded-2xl shadow-sm border border-stone-100 active:border-moriah-brown active:bg-stone-50 transition-all h-32 select-none ${p.stock <= 0 ? 'opacity-40 pointer-events-none' : 'cursor-pointer'}`}
+                                            >
                                                 <div class="flex justify-between items-start gap-1 w-full">
                                                     <p class="font-bold text-sm text-stone-900 leading-tight flex-1 line-clamp-2">{p.name}</p>
                                                     {hasTwoGrinds && <span class="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full shrink-0 font-bold">☕</span>}
@@ -846,7 +869,7 @@
                                                     <span class="text-moriah-brown font-bold text-base">R$ {parseFloat(p.price).toFixed(2)}</span>
                                                     <span class={`text-[10px] px-2 py-0.5 rounded-full ${p.stock < p.minStock ? 'bg-red-100 text-red-600' : 'bg-stone-100 text-stone-500'}`}>{p.stock}</span>
                                                 </div>
-                                            </button>
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -1000,20 +1023,20 @@
                                             </div>
                                         </div>
                                         <div class="p-5 space-y-3">
-                                            <button onClick={() => { addToCart(grindPickerProduct, 'grao'); setGrindPickerProduct(null); }} class="w-full flex items-center justify-between px-5 py-4 bg-amber-50 border-2 border-amber-200 rounded-2xl hover:bg-amber-100 hover:border-amber-400 transition-all group">
+                                            <div role="button" onPointerUp={() => { addToCart(grindPickerProduct, 'grao'); setGrindPickerProduct(null); }} class="w-full flex items-center justify-between px-5 py-4 bg-amber-50 border-2 border-amber-200 rounded-2xl active:bg-amber-100 active:border-amber-400 transition-all cursor-pointer select-none">
                                                 <div class="text-left">
                                                     <p class="font-black text-amber-900 text-base">Em Grão</p>
                                                     <p class="text-xs text-amber-700">Moagem na hora, frescor máximo</p>
                                                 </div>
                                                 <span class="font-black text-xl text-amber-800">R$ {parseFloat(grindPickerProduct.price).toFixed(2)}</span>
-                                            </button>
-                                            <button onClick={() => { addToCart(grindPickerProduct, 'moido'); setGrindPickerProduct(null); }} class="w-full flex items-center justify-between px-5 py-4 bg-stone-50 border-2 border-stone-200 rounded-2xl hover:bg-stone-100 hover:border-stone-400 transition-all group">
+                                            </div>
+                                            <div role="button" onPointerUp={() => { addToCart(grindPickerProduct, 'moido'); setGrindPickerProduct(null); }} class="w-full flex items-center justify-between px-5 py-4 bg-stone-50 border-2 border-stone-200 rounded-2xl active:bg-stone-100 active:border-stone-400 transition-all cursor-pointer select-none">
                                                 <div class="text-left">
                                                     <p class="font-black text-stone-800 text-base">Pó/Moído</p>
                                                     <p class="text-xs text-stone-500">Pronto para uso</p>
                                                 </div>
                                                 <span class="font-black text-xl text-stone-700">R$ {parseFloat(grindPickerProduct.price_moido).toFixed(2)}</span>
-                                            </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1060,28 +1083,46 @@
                                 </div>
                             </div>
                             <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden">
-                                <div class="overflow-x-auto">
-                                    <table class="w-full text-left min-w-[600px] md:min-w-0">
+                                {/* Mobile: cards (sem scroll horizontal) */}
+                                <div class="sm:hidden divide-y divide-stone-100">
+                                    {products.map(p => (
+                                        <div key={p.id} class="flex items-center gap-3 px-4 py-3">
+                                            <div class="flex-1 min-w-0">
+                                                <p class="font-bold text-sm text-stone-900 truncate">{p.name}</p>
+                                                <p class="text-xs text-stone-400">{p.category} · <span class={`font-semibold ${p.stock < p.minStock ? 'text-red-500' : 'text-stone-500'}`}>{p.stock} un.</span></p>
+                                                <p class="text-sm font-bold text-moriah-brown">R$ {parseFloat(p.price).toFixed(2)}</p>
+                                            </div>
+                                            <div class="flex gap-1 shrink-0">
+                                                <button onClick={() => { setEditingProduct(p); setView('edit_product'); }} class="p-2.5 rounded-xl bg-stone-50 text-stone-500 active:bg-moriah-brown active:text-white transition-colors"><LucideIcon name="pencil" className="w-4 h-4" /></button>
+                                                <button onClick={() => deleteProduct(p.id)} class="p-2.5 rounded-xl bg-stone-50 text-stone-400 active:bg-red-500 active:text-white transition-colors"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {products.length === 0 && <p class="px-4 py-8 text-center text-stone-300 italic">Nenhum produto cadastrado.</p>}
+                                </div>
+                                {/* Desktop: tabela completa */}
+                                <div class="hidden sm:block overflow-x-auto">
+                                    <table class="w-full text-left">
                                         <thead class="bg-stone-50 border-b border-stone-100 text-stone-500 text-xs font-medium uppercase tracking-wider">
                                             <tr>
-                                                <th class="px-6 py-4">Produto</th><th class="px-6 py-4 hidden sm:table-cell">Categoria</th><th class="px-6 py-4">Estoque</th>
-                                                <th class="px-6 py-4 hidden sm:table-cell">Custo</th><th class="px-6 py-4">Venda</th><th class="px-6 py-4 hidden lg:table-cell">Ganhos</th>
+                                                <th class="px-6 py-4">Produto</th><th class="px-6 py-4 hidden md:table-cell">Categoria</th><th class="px-6 py-4">Estoque</th>
+                                                <th class="px-6 py-4 hidden md:table-cell">Custo</th><th class="px-6 py-4">Venda</th><th class="px-6 py-4 hidden lg:table-cell">Ganhos</th>
                                                 <th class="px-6 py-4 text-right">Ações</th>
                                             </tr>
                                         </thead>
                                         <tbody class="divide-y divide-stone-50 text-stone-900">
                                             {products.map(p => (
                                                 <tr key={p.id} class="hover:bg-stone-50 transition-colors">
-                                                    <td class="px-6 py-4 flex items-center gap-3 min-w-[200px]"><div><p class="font-bold">{p.name}</p><p class="text-xs text-stone-400">{p.sku}</p></div></td>
-                                                    <td class="px-6 py-4 hidden sm:table-cell"><span class="px-2 py-1 bg-stone-100 rounded text-xs text-stone-600">{p.category}</span></td>
+                                                    <td class="px-6 py-4"><p class="font-bold">{p.name}</p><p class="text-xs text-stone-400">{p.sku}</p></td>
+                                                    <td class="px-6 py-4 hidden md:table-cell"><span class="px-2 py-1 bg-stone-100 rounded text-xs text-stone-600">{p.category}</span></td>
                                                     <td class="px-6 py-4"><span class={`font-bold ${p.stock < p.minStock ? 'text-red-500' : 'text-stone-700'}`}>{p.stock}</span></td>
-                                                    <td class="px-6 py-4 text-stone-500 hidden sm:table-cell">R$ {p.cost.toFixed(2)}</td>
+                                                    <td class="px-6 py-4 text-stone-500 hidden md:table-cell">R$ {p.cost.toFixed(2)}</td>
                                                     <td class="px-6 py-4 font-bold text-moriah-brown whitespace-nowrap">R$ {p.price.toFixed(2)}</td>
                                                     <td class="px-6 py-4 hidden lg:table-cell whitespace-nowrap"><span class="text-emerald-600 font-medium">R$ {(p.price - p.cost).toFixed(2)}</span><span class="text-[10px] text-emerald-500 ml-1">({(((p.price - p.cost) / p.cost) * 100).toFixed(0)}%)</span></td>
                                                     <td class="px-6 py-4 text-right">
                                                         <div class="flex justify-end gap-2">
-                                                            <button onClick={() => { setEditingProduct(p); setView('edit_product'); }} class="p-2 text-stone-400 hover:text-moriah-brown transition-colors hover:bg-stone-100 rounded-lg" title="Editar Produto"><LucideIcon name="pencil" className="w-4 h-4" /></button>
-                                                            <button onClick={() => deleteProduct(p.id)} class="p-2 text-stone-300 hover:text-red-500 transition-colors hover:bg-stone-50 rounded-lg" title="Excluir Produto"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
+                                                            <button onClick={() => { setEditingProduct(p); setView('edit_product'); }} class="p-2 text-stone-400 hover:text-moriah-brown transition-colors hover:bg-stone-100 rounded-lg" title="Editar"><LucideIcon name="pencil" className="w-4 h-4" /></button>
+                                                            <button onClick={() => deleteProduct(p.id)} class="p-2 text-stone-300 hover:text-red-500 transition-colors hover:bg-stone-50 rounded-lg" title="Excluir"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -1143,38 +1184,69 @@
                                     <p class="text-stone-500 font-bold uppercase tracking-widest mt-2">Filtro: {periodFilter === 'always' ? 'Todos os Registros' : periodFilter === 'day' ? 'Vendas de Hoje' : periodFilter === 'week' ? 'Últimos 7 dias' : 'Vendas do Mês'}</p>
                                 </div>
                                 <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden text-sm">
-                                    <div class="overflow-x-auto">
-                                        <table class="w-full text-left min-w-[500px] md:min-w-0">
+                                    {/* Mobile: cards de venda (sem scroll horizontal) */}
+                                    <div class="sm:hidden divide-y divide-stone-100">
+                                        {filteredSales.map(s => {
+                                            const statusColor = (s.tracking_code || s.status === 'Enviado' || s.status === 'Etiqueta Gerada') ? 'bg-indigo-100 text-indigo-700' : (s.status === 'Pago' || s.status === 'Concluído') ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+                                            return (
+                                                <div key={s.id} class="px-4 py-3 space-y-1">
+                                                    <div class="flex items-start justify-between gap-2">
+                                                        <div class="min-w-0">
+                                                            <p class="font-bold text-stone-900 text-sm truncate">{s.customer_name || s.seller || 'PDV'}</p>
+                                                            <p class="text-xs text-stone-400">{new Date(s.created_at || s.date).toLocaleString('pt-BR')}</p>
+                                                        </div>
+                                                        <p class="font-black text-moriah-brown text-base shrink-0">R$ {parseFloat(s.total).toFixed(2)}</p>
+                                                    </div>
+                                                    <div class="flex items-center gap-2 flex-wrap">
+                                                        <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full ${(!s.origin || s.origin === 'Físico') ? 'bg-stone-100 text-stone-600' : 'bg-emerald-100 text-emerald-700'}`}>{s.origin || 'Físico'}</span>
+                                                        <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColor}`}>{s.tracking_code ? 'Enviado' : (s.status || 'Concluído')}</span>
+                                                        {!s.tracking_code && s.origin === 'Online' && s.shipping_service && s.customer_cep && s.shipping_service !== 'RETIRADA' && !['Expressa Moriah ☕', 'Entrega Padrão Feira'].includes(s.shipping_service) && (
+                                                            <button onClick={() => generateLabel(s.id)} class="text-[10px] bg-moriah-brown px-3 py-1 rounded-lg text-white font-bold">Gerar Etiqueta</button>
+                                                        )}
+                                                        {s.tracking_code && <span class="text-[10px] font-mono text-indigo-600 truncate max-w-[120px]">{s.tracking_code}</span>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {filteredSales.length === 0 && <p class="px-4 py-8 text-center text-stone-400">Nenhuma venda neste período.</p>}
+                                        {filteredSales.length > 0 && (
+                                            <div class="px-4 py-3 bg-stone-50 flex justify-between items-center font-black">
+                                                <span class="text-stone-500 text-xs uppercase tracking-wider">Total acumulado</span>
+                                                <span class="text-moriah-brown">R$ {filteredSales.reduce((acc, curr) => acc + parseFloat(curr.total), 0).toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Desktop: tabela completa */}
+                                    <div class="hidden sm:block overflow-x-auto">
+                                        <table class="w-full text-left">
                                             <thead class="bg-stone-50 border-b border-stone-100 text-stone-500 text-xs font-medium uppercase tracking-wider">
-                                                <tr><th class="px-6 py-3">Data</th><th class="px-6 py-3 hidden sm:table-cell">Origem</th><th class="px-6 py-3 hidden sm:table-cell">Status</th><th class="px-6 py-3 hidden md:table-cell">Itens</th><th class="px-6 py-3 text-right">Total</th><th class="px-6 py-3 text-center">Ações</th></tr>
+                                                <tr><th class="px-6 py-3">Data</th><th class="px-6 py-3">Origem</th><th class="px-6 py-3">Status</th><th class="px-6 py-3 hidden md:table-cell">Itens</th><th class="px-6 py-3 text-right">Total</th><th class="px-6 py-3 text-center">Ações</th></tr>
                                             </thead>
                                             <tbody class="divide-y divide-stone-50 text-sm">
                                                 {filteredSales.map(s => (
                                                     <tr key={s.id} class="hover:bg-stone-50 transition-colors">
                                                         <td class="px-6 py-4">
-                                                            <p class="font-bold">{s.seller || 'Sistema'}</p><p class="text-xs text-stone-400">{new Date(s.created_at || s.date).toLocaleString('pt-BR')}</p>
+                                                            <p class="font-bold">{s.customer_name || s.seller || 'PDV'}</p><p class="text-xs text-stone-400">{new Date(s.created_at || s.date).toLocaleString('pt-BR')}</p>
                                                         </td>
-                                                        <td class="px-6 py-4 hidden sm:table-cell">
-                                                            <span class={`flex items-center gap-1 w-max px-2 py-1 rounded-md text-[10px] font-bold uppercase ${(!s.origin || s.origin === 'Físico') ? 'bg-stone-100 text-stone-600 border border-stone-200' : 'bg-emerald-100 text-emerald-700 border border-emerald-200'}`}>
+                                                        <td class="px-6 py-4">
+                                                            <span class={`flex items-center gap-1 w-max px-2 py-1 rounded-md text-[10px] font-bold uppercase ${(!s.origin || s.origin === 'Físico') ? 'bg-stone-100 text-stone-600' : 'bg-emerald-100 text-emerald-700'}`}>
                                                                 <LucideIcon name={(!s.origin || s.origin === 'Físico') ? 'store' : 'globe'} className="w-3 h-3" /> {s.origin || 'Físico'}
                                                             </span>
                                                         </td>
-                                                        <td class="px-6 py-4 hidden sm:table-cell">
-                                                            <span class={`px-2 py-1 rounded text-[10px] font-bold uppercase ${(s.tracking_code || s.status === 'Enviado' || s.status === 'Etiqueta Gerada') ? 'bg-indigo-100 text-indigo-700' : (s.status === 'Concluído' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}`}>{s.tracking_code ? 'Enviado' : (s.status || 'Concluído')}</span>
+                                                        <td class="px-6 py-4">
+                                                            <span class={`px-2 py-1 rounded text-[10px] font-bold uppercase ${(s.tracking_code || s.status === 'Enviado' || s.status === 'Etiqueta Gerada') ? 'bg-indigo-100 text-indigo-700' : (s.status === 'Pago' || s.status === 'Concluído') ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{s.tracking_code ? 'Enviado' : (s.status || 'Concluído')}</span>
                                                         </td>
                                                         <td class="px-6 py-4 hidden md:table-cell text-xs text-stone-600 max-w-[200px] truncate">{(s.items || []).map(i => `${i.quantity}x ${(i.product_name || i.name)}`).join(', ') || '-'}</td>
-                                                        <td class="px-6 py-4 text-right font-bold text-lg whitespace-nowrap">R$ {s.total.toFixed(2)}</td>
+                                                        <td class="px-6 py-4 text-right font-bold text-base whitespace-nowrap">R$ {parseFloat(s.total).toFixed(2)}</td>
                                                         <td class="px-6 py-4 text-center">
                                                             {s.tracking_code ? (
-                                                                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded uppercase tracking-wider">{s.tracking_code}</span>
+                                                                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">{s.tracking_code}</span>
                                                             ) : s.origin === 'Online' && s.shipping_service === 'RETIRADA' ? (
-                                                                <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded uppercase tracking-wider">Retirada</span>
+                                                                <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded">Retirada</span>
                                                             ) : s.origin === 'Online' && ['Expressa Moriah ☕', 'Entrega Padrão Feira'].includes(s.shipping_service) ? (
-                                                                <span class="text-[10px] font-bold text-orange-700 bg-orange-50 px-2 py-1 rounded uppercase tracking-wider">Entrega Local</span>
+                                                                <span class="text-[10px] font-bold text-orange-700 bg-orange-50 px-2 py-1 rounded">Entrega Local</span>
                                                             ) : s.origin === 'Online' && s.shipping_service && s.customer_cep ? (
-                                                                <button onClick={() => generateLabel(s.id)} class="text-[10px] md:text-xs bg-moriah-brown hover:bg-moriah-dark px-3 py-1.5 rounded-lg text-white font-bold transition-all shadow-sm w-full whitespace-nowrap">
-                                                                    Gerar Etiqueta
-                                                                </button>
+                                                                <button onClick={() => generateLabel(s.id)} class="text-xs bg-moriah-brown hover:bg-moriah-dark px-3 py-1.5 rounded-lg text-white font-bold transition-all shadow-sm whitespace-nowrap">Gerar Etiqueta</button>
                                                             ) : (
                                                                 <span class="text-xs text-stone-300">-</span>
                                                             )}
@@ -1185,7 +1257,7 @@
                                             </tbody>
                                             {filteredSales.length > 0 && (
                                                 <tfoot class="bg-stone-50 border-t border-stone-100">
-                                                    <tr class="font-black text-lg"><td colSpan="4" class="px-6 py-4 text-right">TOTAL ACUMULADO</td><td class="px-6 py-4 text-right text-moriah-brown">R$ {filteredSales.reduce((acc, curr) => acc + curr.total, 0).toFixed(2)}</td><td></td></tr>
+                                                    <tr class="font-black text-base"><td colSpan="4" class="px-6 py-4 text-right">TOTAL ACUMULADO</td><td class="px-6 py-4 text-right text-moriah-brown">R$ {filteredSales.reduce((acc, curr) => acc + parseFloat(curr.total), 0).toFixed(2)}</td><td></td></tr>
                                                 </tfoot>
                                             )}
                                         </table>
