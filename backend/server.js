@@ -179,22 +179,17 @@ async function initTables(dbUtil, isMysql) {
     console.log('[DB] Tabela sales: OK');
 
     // Adiciona colunas a bancos já existentes (falha silenciosa se já existirem)
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_name TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_email TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_cpf TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_cep TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_address_number TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_cost REAL DEFAULT 0'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_service TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN tracking_code TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_street TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_neighborhood TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_city TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_state TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_complement TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_service_id TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN me_order_id TEXT'); } catch (e) { }
-    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN label_url TEXT'); } catch (e) { }
+    const salesColumns = [
+        'origin TEXT DEFAULT "Fisico"', 'status TEXT DEFAULT "Concluido"', 'payment_id TEXT',
+        'customer_phone TEXT', 'customer_name TEXT', 'customer_email TEXT', 'customer_cpf TEXT',
+        'customer_cep TEXT', 'customer_address_number TEXT', 'customer_street TEXT',
+        'customer_neighborhood TEXT', 'customer_city TEXT', 'customer_state TEXT',
+        'customer_complement TEXT', 'shipping_cost REAL DEFAULT 0', 'shipping_service TEXT',
+        'shipping_service_id TEXT', 'tracking_code TEXT', 'me_order_id TEXT', 'label_url TEXT'
+    ];
+    for (const colDef of salesColumns) {
+        try { await dbUtil.run(`ALTER TABLE sales ADD COLUMN ${colDef}`); } catch (e) { }
+    }
     try { await dbUtil.run('ALTER TABLE products ADD COLUMN price_moido REAL DEFAULT 0'); } catch (e) { }
     // MODIFY COLUMN é sintaxe MySQL — só executa quando conectado ao MySQL
     if (isMysql) { try { await dbUtil.run('ALTER TABLE products MODIFY COLUMN image_url MEDIUMTEXT'); } catch (e) { } }
@@ -621,7 +616,7 @@ const transporter = nodemailer.createTransport({
 
 // Notifica o cliente via WhatsApp quando etiqueta/rastreio é gerado
 async function notifyCustomerTracking(sale, trackingCode) {
-    const token   = process.env.META_WHATSAPP_TOKEN;
+    const token = process.env.META_WHATSAPP_TOKEN;
     const phoneId = process.env.META_PHONE_NUMBER_ID;
     if (!token || !phoneId) return;
     let phone = (sale.customer_phone || '').replace(/\D/g, '');
@@ -648,15 +643,15 @@ async function notifyCustomerTracking(sale, trackingCode) {
 // Notifica o dono via WhatsApp Cloud API (Meta)
 // Env vars necessárias: META_WHATSAPP_TOKEN, META_PHONE_NUMBER_ID, OWNER_PHONE (ex: 5575999999999)
 function notifyOwnerNewOrder({ customerName, customerPhone, customerCep, totalAmount, billingType, shippingService, shippingCost, cartItems }) {
-    const token       = process.env.META_WHATSAPP_TOKEN;
-    const phoneId     = process.env.META_PHONE_NUMBER_ID;
-    const ownerPhone  = process.env.OWNER_PHONE;
+    const token = process.env.META_WHATSAPP_TOKEN;
+    const phoneId = process.env.META_PHONE_NUMBER_ID;
+    const ownerPhone = process.env.OWNER_PHONE;
     if (!token || !phoneId || !ownerPhone) return;
 
     const shippingLabel = shippingService === 'RETIRADA' ? 'Retirada na Loja' :
         (shippingService && shippingService.includes('Expressa')) ? 'Expressa Moriah (Feira)' :
-        (shippingService && shippingService.includes('Padrão Feira')) ? 'Padrão Feira de Santana' :
-        `Correios - ${shippingService || 'A definir'}`;
+            (shippingService && shippingService.includes('Padrão Feira')) ? 'Padrão Feira de Santana' :
+                `Correios - ${shippingService || 'A definir'}`;
     const shippingCostLabel = parseFloat(shippingCost) > 0
         ? `R$ ${parseFloat(shippingCost).toFixed(2).replace('.', ',')}`
         : 'GRÁTIS';
@@ -827,7 +822,7 @@ app.post('/api/checkout', async (req, res) => {
             }
             await dbUtil.run('COMMIT');
         } catch (dbErr) {
-            await dbUtil.run('ROLLBACK').catch(() => {});
+            await dbUtil.run('ROLLBACK').catch(() => { });
             console.error("Erro ao salvar venda no banco após pagamento aprovado:", dbErr);
             // Pagamento foi aprovado mas não salvou — loga para investigação manual
         }
@@ -995,7 +990,7 @@ app.post('/api/shipping/generate-label', async (req, res) => {
                 [sale_id]
             );
             const totalWeight = items.reduce((acc, i) => acc + (i.weight_grams * i.quantity), 0);
-            const totalValue  = items.reduce((acc, i) => acc + (parseFloat(i.price) * i.quantity), 0);
+            const totalValue = items.reduce((acc, i) => acc + (parseFloat(i.price) * i.quantity), 0);
             const weightKg = parseFloat(Math.max(totalWeight / 1000, 0.1).toFixed(2));
 
             const meHeaders = {
@@ -1009,32 +1004,32 @@ app.post('/api/shipping/generate-label', async (req, res) => {
             const cartPayload = {
                 service: parseInt(sale.shipping_service_id),
                 from: {
-                    name:        process.env.STORE_NAME       || 'Moriah Café',
-                    phone:       process.env.STORE_PHONE      || '75992073245',
-                    email:       process.env.STORE_EMAIL      || 'atendimento@moriahcafe.com',
-                    document:    process.env.STORE_DOCUMENT   || '',
-                    address:     process.env.STORE_ADDRESS    || 'Endereço da Loja',
-                    complement:  process.env.STORE_COMPLEMENT || null,
-                    number:      process.env.STORE_NUMBER     || 'S/N',
-                    district:    process.env.STORE_DISTRICT   || 'Centro',
-                    city:        process.env.STORE_CITY       || 'Feira de Santana',
-                    country_id:  'BR',
+                    name: process.env.STORE_NAME || 'Moriah Café',
+                    phone: process.env.STORE_PHONE || '75992073245',
+                    email: process.env.STORE_EMAIL || 'atendimento@moriahcafe.com',
+                    document: process.env.STORE_DOCUMENT || '',
+                    address: process.env.STORE_ADDRESS || 'Endereço da Loja',
+                    complement: process.env.STORE_COMPLEMENT || null,
+                    number: process.env.STORE_NUMBER || 'S/N',
+                    district: process.env.STORE_DISTRICT || 'Centro',
+                    city: process.env.STORE_CITY || 'Feira de Santana',
+                    country_id: 'BR',
                     postal_code: ORIGIN_CEP,
-                    state_abbr:  process.env.STORE_STATE      || 'BA'
+                    state_abbr: process.env.STORE_STATE || 'BA'
                 },
                 to: {
-                    name:        sale.customer_name || 'Cliente',
-                    phone:       (sale.customer_phone  || '').replace(/\D/g, ''),
-                    email:       sale.customer_email   || '',
-                    document:    (sale.customer_cpf    || '').replace(/\D/g, ''),
-                    address:     sale.customer_street  || '',
-                    complement:  sale.customer_complement || null,
-                    number:      sale.customer_address_number || 'S/N',
-                    district:    sale.customer_neighborhood   || '',
-                    city:        sale.customer_city    || '',
-                    country_id:  'BR',
-                    postal_code: (sale.customer_cep    || '').replace(/\D/g, ''),
-                    state_abbr:  sale.customer_state   || ''
+                    name: sale.customer_name || 'Cliente',
+                    phone: (sale.customer_phone || '').replace(/\D/g, ''),
+                    email: sale.customer_email || '',
+                    document: (sale.customer_cpf || '').replace(/\D/g, ''),
+                    address: sale.customer_street || '',
+                    complement: sale.customer_complement || null,
+                    number: sale.customer_address_number || 'S/N',
+                    district: sale.customer_neighborhood || '',
+                    city: sale.customer_city || '',
+                    country_id: 'BR',
+                    postal_code: (sale.customer_cep || '').replace(/\D/g, ''),
+                    state_abbr: sale.customer_state || ''
                 },
                 products: items.map(i => ({
                     name: i.product_name || 'Produto',
@@ -1118,7 +1113,7 @@ app.get('/api/shipping/label/:sale_id', async (req, res) => {
         try {
             const jsonData = JSON.parse(Buffer.from(error.response?.data || '{}').toString());
             if (jsonData.url) return res.redirect(jsonData.url);
-        } catch (_) {}
+        } catch (_) { }
         res.status(500).send('Erro ao obter etiqueta. Acesse https://melhorenvio.com.br/envios para baixar manualmente.');
     }
 });
@@ -1147,8 +1142,8 @@ app.post('/api/webhooks/asaas', async (req, res) => {
         console.log(`[WEBHOOK ASAAS] Venda #${sale.id} (${sale.customer_name}) marcada como Pago.`);
 
         // Notificar dono: confirmação PIX
-        const token      = process.env.META_WHATSAPP_TOKEN;
-        const phoneId    = process.env.META_PHONE_NUMBER_ID;
+        const token = process.env.META_WHATSAPP_TOKEN;
+        const phoneId = process.env.META_PHONE_NUMBER_ID;
         const ownerPhone = process.env.OWNER_PHONE;
         if (token && phoneId && ownerPhone) {
             const msg = [
@@ -1177,8 +1172,8 @@ app.post('/api/webhooks/asaas', async (req, res) => {
 // Dashboard financeiro
 app.get('/api/dashboard', async (req, res) => {
     try {
-        const now        = new Date();
-        const todayStr   = now.toISOString().split('T')[0];
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
         const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
         const paidStatuses = ['Pago', 'Etiqueta Gerada', 'Enviado'];
 

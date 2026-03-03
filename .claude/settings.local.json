@@ -5,7 +5,15 @@
       "Bash(node --check:*)",
       "Bash(git push:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(gh api:*)",
+      "Bash(python3:*)",
+      "Bash(curl:*)",
+      "Bash(node -e:*)",
+      "Bash(# Tenta pegar token do credential store do Windows echo \"\"url=https://github.com\"\" | git -C /c/Antigrafity_PFD/Moriah_PDV credential fill)",
+      "Bash(git -C /c/Antigrafity_PFD/Moriah_PDV credential fill:*)",
+      "Bash(ASAAS_KEY='$aact_prod_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OjFlMDRmNTY2LTdkYTQtNDAxYy04YmRhLTVjYmJiMjMyZjM4Njo6JGFhY2hfYjUzNTgyZTktZmY1ZS00NmEzLWJkZDQtZWRkZjYwYjNiYjdh')",
+      "Bash(__NEW_LINE_4904da5f26ecd8f4__ curl -s \"https://api.asaas.com/v3/customers?limit=1\" -H \"access_token: $ASAAS_KEY\")"
     ]
   }
 }
