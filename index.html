@@ -570,7 +570,7 @@
 
             const stats = useMemo(() => {
                 const today = new Date().toLocaleDateString();
-                const todaySales = sales.filter(s => new Date(s.date).toLocaleDateString() === today);
+                const todaySales = sales.filter(s => new Date(s.created_at || s.date).toLocaleDateString() === today);
                 const revenue = todaySales.reduce((acc, curr) => acc + curr.total, 0);
                 const lowStock = products.filter(p => p.stock < p.minStock);
                 return { revenue, lowStockCount: lowStock.length };
@@ -1037,7 +1037,7 @@
                                                     <p class="font-black text-stone-800 text-base">Pó/Moído</p>
                                                     <p class="text-xs text-stone-500">Pronto para uso</p>
                                                 </div>
-                                                <span class="font-black text-xl text-stone-700">R$ {parseFloat(grindPickerProduct.price_moido).toFixed(2)}</span>
+                                                <span class="font-black text-xl text-stone-700">R$ {parseFloat(grindPickerProduct.price_moido || 0).toFixed(2)}</span>
                                             </div>
                                         </div>
                                     </div>

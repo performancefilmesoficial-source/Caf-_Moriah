@@ -576,56 +576,36 @@ app.get('/api/sales', async (req, res) => {
 // 2. Finalizar uma venda
 app.post('/api/sales', async (req, res) => {
     const { seller, items, subtotal, discount, total, method, origin, customer_phone } = req.body;
-
-    (async () => {
-        try {
-            await dbUtil.run(process.env.DATABASE_URL ? 'START TRANSACTION' : 'BEGIN TRANSACTION');
-
-            // 1. Salva a venda principal
-            const result = await dbUtil.run(
-                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id) VALUES (?, ?, ?, ?, ?, ?)',
-                [total, method, origin || 'Físico', 'Concluído', customer_phone, null]
-            );
-            const saleId = result[0].insertId;
-
-            // 2. Salva os itens e baixa o estoque
-            for (const item of items) {
-                await dbUtil.run(
-                    'INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
-                    [saleId, item.id, item.name, item.quantity, item.price]
-                );
-
-                await dbUtil.run(
-                    'UPDATE products SET stock = stock - ? WHERE id = ?',
-                    [item.quantity, item.id]
-                );
-            }
-
-            await dbUtil.run('COMMIT');
-            res.status(201).json({ id: saleId, message: 'Venda finalizada com sucesso!' });
-        } catch (error) {
-            await dbUtil.run('ROLLBACK');
-            console.error(error);
-            res.status(500).json({ error: 'Erro ao finalizar venda. Transação desfeita.' });
-        }
-    })();
-});
-
-// ---- USUÁRIOS (Autenticação simples) ----
-app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
     try {
-        // Mockado simples (Não temos tabela de usuários no SQLite ainda, usa o hardcoded como antes)
-        if (username === 'admin' && password === '123') {
-            res.json({ id: 1, name: 'Administrador', username: 'admin', role: 'admin' });
-        } else {
-            res.status(401).json({ error: 'Usuário ou senha inválidos' });
+        // Salva a venda principal
+        const result = await dbUtil.run(
+            'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id) VALUES (?, ?, ?, ?, ?, ?)',
+            [total, method, origin || 'Físico', 'Concluído', customer_phone, null]
+        );
+        const saleId = result[0].insertId;
+
+        // Salva os itens e baixa o estoque
+        for (const item of items) {
+            // Extrai ID numérico (pode vir como "123-grao" ou número simples)
+            const productId = parseInt(String(item.id).split('-')[0]);
+            await dbUtil.run(
+                'INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                [saleId, productId, item.name, item.quantity, item.price]
+            );
+            await dbUtil.run(
+                'UPDATE products SET stock = stock - ? WHERE id = ?',
+                [item.quantity, productId]
+            );
         }
+
+        res.status(201).json({ id: saleId, message: 'Venda finalizada com sucesso!' });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Erro no login' });
+        console.error('[/api/sales] Erro:', error);
+        res.status(500).json({ error: 'Erro ao finalizar venda: ' + error.message });
     }
 });
+
+// /api/login removido — use /api/auth/login (autenticação via banco de dados)
 
 // ==== E-COMMERCE: E-MAILS TRANSACIONAIS ====
 // Configuração do Transportador de Email (Exemplo genérico)
