@@ -546,13 +546,13 @@ const transporter = nodemailer.createTransport({
     },
 });
 
-// Envia email de alerta ao dono da loja sobre novo pedido online
-// Envia notificação WhatsApp ao dono via CallMeBot (gratuito)
-// Configurar no Coolify: CALLMEBOT_PHONE (ex: 5575999999999) e CALLMEBOT_APIKEY
+// Notifica o dono via WhatsApp Cloud API (Meta)
+// Env vars necessárias: META_WHATSAPP_TOKEN, META_PHONE_NUMBER_ID, OWNER_PHONE (ex: 5575999999999)
 function notifyOwnerNewOrder({ customerName, customerPhone, customerCep, totalAmount, billingType, shippingService, shippingCost, cartItems }) {
-    const cbPhone = process.env.CALLMEBOT_PHONE;
-    const cbKey   = process.env.CALLMEBOT_APIKEY;
-    if (!cbPhone || !cbKey) return;
+    const token       = process.env.META_WHATSAPP_TOKEN;
+    const phoneId     = process.env.META_PHONE_NUMBER_ID;
+    const ownerPhone  = process.env.OWNER_PHONE;
+    if (!token || !phoneId || !ownerPhone) return;
 
     const shippingLabel = shippingService === 'RETIRADA' ? 'Retirada na Loja' :
         (shippingService && shippingService.includes('Expressa')) ? 'Expressa Moriah (Feira)' :
@@ -560,24 +560,32 @@ function notifyOwnerNewOrder({ customerName, customerPhone, customerCep, totalAm
         `Correios - ${shippingService || 'A definir'}`;
     const shippingCostLabel = parseFloat(shippingCost) > 0
         ? `R$ ${parseFloat(shippingCost).toFixed(2).replace('.', ',')}`
-        : 'GRATIS';
-    const paymentLabel = billingType === 'CREDIT_CARD' ? 'Cartao de Credito' : 'PIX';
-    const itemsList = (cartItems || []).map(i => `  - ${i.name} x${i.quantity}`).join('\n');
+        : 'GRÁTIS';
+    const paymentLabel = billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX';
+    const itemsList = (cartItems || []).map(i => `  • ${i.name} x${i.quantity}`).join('\n');
 
     const msg = [
-        '☕ *Novo Pedido - Moriah Cafe*',
+        '☕ *Novo Pedido - Moriah Café*',
         `👤 Cliente: ${customerName}`,
-        `📞 Tel: ${customerPhone || 'nao informado'}`,
-        `📮 CEP: ${customerCep || 'nao informado'}`,
+        `📞 Tel: ${customerPhone || 'não informado'}`,
+        `📮 CEP: ${customerCep || 'não informado'}`,
         `💰 Total: R$ ${parseFloat(totalAmount).toFixed(2).replace('.', ',')}`,
         `💳 Pagamento: ${paymentLabel}`,
-        `🚚 Entrega: ${shippingLabel} - ${shippingCostLabel}`,
+        `🚚 Entrega: ${shippingLabel} — ${shippingCostLabel}`,
         `📦 Itens:\n${itemsList}`,
         `\nAcesse o PDV para acompanhar.`
     ].join('\n');
 
-    const url = `https://api.callmebot.com/whatsapp.php?phone=${cbPhone}&text=${encodeURIComponent(msg)}&apikey=${cbKey}`;
-    axios.get(url).catch(err => console.error('[WA NOTIFY] Erro ao enviar WhatsApp:', err.message));
+    axios.post(
+        `https://graph.facebook.com/v19.0/${phoneId}/messages`,
+        {
+            messaging_product: 'whatsapp',
+            to: ownerPhone,
+            type: 'text',
+            text: { body: msg }
+        },
+        { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    ).catch(err => console.error('[WA META] Erro ao enviar notificação:', err.response?.data || err.message));
 }
 
 app.post('/api/checkout', async (req, res) => {
