@@ -90,20 +90,25 @@ async function setupDatabase() {
         });
 
         dbUtil = {
+            // Helper para limpar parâmetros undefined (causa erro fatal no mysql2)
+            _clean: (params) => (Array.isArray(params) ? params.map(v => (v === undefined ? null : v)) : params),
+
             // query: para SELECT — usa pool.query (aceita prepared statements com arrays)
             query: async (sql, params = []) => {
-                const [rows] = await pool.query(sql, params);
+                const [rows] = await pool.query(sql, dbUtil._clean(params));
                 return [rows];
             },
+
             // run: para DML (INSERT/UPDATE/DELETE) — usa pool.execute (mais seguro para params)
             run: async (sql, params = []) => {
+                const cleaned = dbUtil._clean(params);
                 // DDL (CREATE TABLE, ALTER TABLE, MODIFY, etc.) usa pool.query pois pool.execute não suporta DDL
                 const isDDL = /^\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME)/i.test(sql);
                 if (isDDL) {
-                    const [result] = await pool.query(sql, params);
+                    const [result] = await pool.query(sql, cleaned);
                     return [{ insertId: result.insertId || 0, changes: result.affectedRows || 0 }];
                 }
-                const [result] = await pool.execute(sql, params);
+                const [result] = await pool.execute(sql, cleaned);
                 return [{ insertId: result.insertId, changes: result.affectedRows }];
             },
             pool: pool
@@ -116,14 +121,15 @@ async function setupDatabase() {
         sqliteDb = new sqlite3.Database('./moriahpdv.sqlite');
 
         dbUtil = {
+            _clean: (params) => (Array.isArray(params) ? params.map(v => (v === undefined ? null : v)) : params),
             query: (sql, params = []) => new Promise((resolve, reject) => {
-                sqliteDb.all(sql, params, (err, rows) => {
+                sqliteDb.all(sql, dbUtil._clean(params), (err, rows) => {
                     if (err) reject(err);
                     else resolve([rows]);
                 });
             }),
             run: (sql, params = []) => new Promise((resolve, reject) => {
-                sqliteDb.run(sql, params, function (err) {
+                sqliteDb.run(sql, dbUtil._clean(params), function (err) {
                     if (err) reject(err);
                     else resolve([{ insertId: this.lastID, changes: this.changes }]);
                 });
