@@ -480,6 +480,8 @@
                     setIsLoadingSales(false);
                 }
             };
+            const [loginLoading, setLoginLoading] = useState(false);
+            const [loginError, setLoginError] = useState('');
             const [cart, setCart] = useState([]);
             const [searchTerm, setSearchTerm] = useState('');
             const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -1277,8 +1279,6 @@
                         />;
 
                     case 'login': {
-                        const [loginLoading, setLoginLoading] = React.useState(false);
-                        const [loginError, setLoginError] = React.useState('');
                         const handleLogin = async (e) => {
                             e.preventDefault();
                             setLoginError('');
