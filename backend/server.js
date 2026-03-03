@@ -546,6 +546,32 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+// Notifica o cliente via WhatsApp quando etiqueta/rastreio é gerado
+async function notifyCustomerTracking(sale, trackingCode) {
+    const token   = process.env.META_WHATSAPP_TOKEN;
+    const phoneId = process.env.META_PHONE_NUMBER_ID;
+    if (!token || !phoneId) return;
+    let phone = (sale.customer_phone || '').replace(/\D/g, '');
+    if (!phone) return;
+    if (!phone.startsWith('55')) phone = '55' + phone;
+    const trackUrl = `https://rastreamento.correios.com.br/app/index.php?label=${trackingCode}`;
+    const msg = [
+        `☕ *Moriah Café — Seu pedido foi enviado!*`,
+        ``,
+        `Olá ${sale.customer_name || 'Cliente'}! Seu pedido está a caminho. 📦`,
+        ``,
+        `🔍 *Código de rastreio:* ${trackingCode}`,
+        `🌐 Rastreie em: ${trackUrl}`,
+        ``,
+        `Qualquer dúvida, fale conosco. Bom café! ☕`
+    ].join('\n');
+    axios.post(
+        `https://graph.facebook.com/v19.0/${phoneId}/messages`,
+        { messaging_product: 'whatsapp', to: phone, type: 'text', text: { body: msg } },
+        { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    ).catch(err => console.error('[WA META] Erro ao notificar cliente rastreio:', err.response?.data || err.message));
+}
+
 // Notifica o dono via WhatsApp Cloud API (Meta)
 // Env vars necessárias: META_WHATSAPP_TOKEN, META_PHONE_NUMBER_ID, OWNER_PHONE (ex: 5575999999999)
 function notifyOwnerNewOrder({ customerName, customerPhone, customerCep, totalAmount, billingType, shippingService, shippingCost, cartItems }) {
@@ -591,6 +617,20 @@ function notifyOwnerNewOrder({ customerName, customerPhone, customerCep, totalAm
 app.post('/api/checkout', async (req, res) => {
     const { customerName, customerEmail, customerCpf, customerPhone, customerCep, customerAddressNumber, customerStreet, customerNeighborhood, customerCity, customerState, customerComplement, cartItems, totalAmount, billingType, cardData } = req.body;
     const shippingServiceId = req.body.shippingServiceId || null;
+
+    // Validar estoque antes de qualquer processamento de pagamento
+    try {
+        for (const item of cartItems) {
+            const [rows] = await dbUtil.query('SELECT stock, name FROM products WHERE id = ?', [item.id]);
+            if (!rows.length) return res.status(400).json({ success: false, error: `Produto não encontrado: ${item.name}` });
+            if (rows[0].stock < item.quantity) {
+                return res.status(400).json({ success: false, error: `"${rows[0].name}" sem estoque suficiente. Disponível: ${rows[0].stock} unidade(s).` });
+            }
+        }
+    } catch (stockErr) {
+        console.error('[CHECKOUT] Erro ao validar estoque:', stockErr);
+        return res.status(500).json({ success: false, error: 'Erro ao verificar disponibilidade dos produtos.' });
+    }
 
     // SE NÃO HÁ API KEY DO ASAAS configurada, simula um checkout manual (loja registra o pedido e notifica via email)
     if (!ASAAS_API_KEY) {
@@ -959,6 +999,7 @@ app.post('/api/shipping/generate-label', async (req, res) => {
                 'UPDATE sales SET tracking_code = ?, status = ?, me_order_id = ?, label_url = ? WHERE id = ?',
                 [trackingCode, 'Etiqueta Gerada', meOrderId, labelProxyUrl, sale_id]
             );
+            notifyCustomerTracking(sale, trackingCode);
             return res.json({ success: true, tracking_code: trackingCode, label_url: labelProxyUrl });
         }
 
@@ -966,6 +1007,7 @@ app.post('/api/shipping/generate-label', async (req, res) => {
         console.log('[LABEL SIMULADA] Token:', !!MELHORENVIO_TOKEN, '| Endereço completo:', !!hasFullAddress, '| ServiceId:', !!sale.shipping_service_id);
         const trackingCode = `BR${Math.floor(Math.random() * 999999999)}ME`;
         await dbUtil.run('UPDATE sales SET tracking_code = ?, status = ? WHERE id = ?', [trackingCode, 'Etiqueta Gerada', sale_id]);
+        notifyCustomerTracking(sale, trackingCode);
         res.json({ success: true, tracking_code: trackingCode, label_url: 'https://rastreamento.correios.com.br/app/index.php', simulated: true });
 
     } catch (error) {
@@ -975,6 +1017,7 @@ app.post('/api/shipping/generate-label', async (req, res) => {
         try {
             const trackingCode = `BR${Math.floor(Math.random() * 999999999)}ME`;
             await dbUtil.run('UPDATE sales SET tracking_code = ?, status = ? WHERE id = ?', [trackingCode, 'Etiqueta Gerada', sale_id]);
+            notifyCustomerTracking(sale, trackingCode);
             res.json({ success: true, tracking_code: trackingCode, label_url: 'https://rastreamento.correios.com.br/app/index.php', simulated: true, api_error: errMsg });
         } catch (dbErr) {
             res.status(500).json({ error: 'Erro ao gerar etiqueta: ' + errMsg });
@@ -1004,6 +1047,101 @@ app.get('/api/shipping/label/:sale_id', async (req, res) => {
             if (jsonData.url) return res.redirect(jsonData.url);
         } catch (_) {}
         res.status(500).send('Erro ao obter etiqueta. Acesse https://melhorenvio.com.br/envios para baixar manualmente.');
+    }
+});
+
+// Webhook Asaas — confirmação automática de PIX (PAYMENT_RECEIVED / PAYMENT_CONFIRMED)
+// Configurar no painel Asaas: Configurações → Notificações → Webhook URL = https://cafemoriah.com.br/api/webhooks/asaas
+app.post('/api/webhooks/asaas', async (req, res) => {
+    try {
+        const { event, payment } = req.body;
+        console.log('[WEBHOOK ASAAS] Evento:', event, '| Payment ID:', payment?.id);
+
+        if (!payment?.id || !['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'].includes(event)) {
+            return res.json({ received: true });
+        }
+
+        const [sales] = await dbUtil.query('SELECT * FROM sales WHERE payment_id = ?', [payment.id]);
+        if (!sales.length) {
+            console.log('[WEBHOOK ASAAS] Venda não encontrada para payment_id:', payment.id);
+            return res.json({ received: true });
+        }
+
+        const sale = sales[0];
+        if (sale.status === 'Pago') return res.json({ received: true }); // já confirmado
+
+        await dbUtil.run('UPDATE sales SET status = ? WHERE id = ?', ['Pago', sale.id]);
+        console.log(`[WEBHOOK ASAAS] Venda #${sale.id} (${sale.customer_name}) marcada como Pago.`);
+
+        // Notificar dono: confirmação PIX
+        const token      = process.env.META_WHATSAPP_TOKEN;
+        const phoneId    = process.env.META_PHONE_NUMBER_ID;
+        const ownerPhone = process.env.OWNER_PHONE;
+        if (token && phoneId && ownerPhone) {
+            const msg = [
+                `✅ *PIX Confirmado — Moriah Café*`,
+                ``,
+                `👤 Cliente: ${sale.customer_name}`,
+                `💰 Valor: R$ ${parseFloat(sale.total).toFixed(2).replace('.', ',')}`,
+                `📋 Venda #${sale.id}`,
+                ``,
+                `Acesse o PDV para preparar o pedido. ☕`
+            ].join('\n');
+            axios.post(
+                `https://graph.facebook.com/v19.0/${phoneId}/messages`,
+                { messaging_product: 'whatsapp', to: ownerPhone, type: 'text', text: { body: msg } },
+                { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }
+            ).catch(e => console.error('[WA META] Webhook notify:', e.response?.data || e.message));
+        }
+
+        return res.json({ received: true });
+    } catch (err) {
+        console.error('[WEBHOOK ASAAS] Erro:', err.message);
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// Dashboard financeiro
+app.get('/api/dashboard', async (req, res) => {
+    try {
+        const now        = new Date();
+        const todayStr   = now.toISOString().split('T')[0];
+        const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        const paidStatuses = ['Pago', 'Etiqueta Gerada', 'Enviado'];
+
+        const [allSales] = await dbUtil.query('SELECT id, total, status, created_at, customer_name, method, shipping_service FROM sales ORDER BY created_at DESC');
+
+        let revenueToday = 0, revenueMonth = 0, pendingCount = 0, pendingTotal = 0;
+        for (const s of allSales) {
+            const ds = new Date(s.created_at).toISOString().split('T')[0];
+            if (paidStatuses.includes(s.status)) {
+                if (ds === todayStr) revenueToday += parseFloat(s.total || 0);
+                if (ds >= monthStart) revenueMonth += parseFloat(s.total || 0);
+            }
+            if (s.status === 'Pendente' || s.status === 'Aguardando Pagamento') {
+                pendingCount++;
+                pendingTotal += parseFloat(s.total || 0);
+            }
+        }
+
+        const [pendingSales] = await dbUtil.query(
+            "SELECT id, customer_name, total, status, created_at, shipping_service FROM sales WHERE status IN ('Pendente', 'Aguardando Pagamento') ORDER BY created_at DESC LIMIT 10"
+        );
+        const [lowStock] = await dbUtil.query(
+            'SELECT id, name, stock, category FROM products WHERE stock <= 5 ORDER BY stock ASC LIMIT 20'
+        );
+        const recentSales = allSales.filter(s => paidStatuses.includes(s.status)).slice(0, 5);
+
+        res.json({
+            success: true,
+            revenue: { today: revenueToday, month: revenueMonth },
+            pending: { count: pendingCount, total: pendingTotal, sales: pendingSales },
+            lowStock,
+            recentSales
+        });
+    } catch (err) {
+        console.error('[DASHBOARD]', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 

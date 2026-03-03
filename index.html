@@ -1008,6 +1008,115 @@
                         </div>
                     );
 
+                    case 'dashboard': {
+                        const [dashData, setDashData] = React.useState(null);
+                        const [dashLoading, setDashLoading] = React.useState(true);
+                        React.useEffect(() => {
+                            setDashLoading(true);
+                            fetch('/api/dashboard')
+                                .then(r => r.json())
+                                .then(d => { setDashData(d); setDashLoading(false); })
+                                .catch(() => setDashLoading(false));
+                        }, []);
+                        const fmt = v => `R$ ${parseFloat(v || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
+                        const fmtDate = s => { const d = new Date(s); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); };
+                        return (
+                            <div class="space-y-6 animate-in fade-in duration-500">
+                                <h2 class="text-2xl font-bold text-stone-900">Dashboard</h2>
+                                {dashLoading && <div class="flex items-center gap-3 py-8 text-stone-500"><div class="w-5 h-5 border-2 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>Carregando dados...</div>}
+                                {dashData && !dashLoading && (
+                                    <div class="space-y-6">
+                                        {/* Cards de faturamento */}
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div class="bg-white rounded-2xl p-5 shadow-sm border border-stone-100">
+                                                <p class="text-xs text-stone-400 uppercase tracking-wider mb-1">Hoje</p>
+                                                <p class="text-2xl font-bold text-emerald-600">{fmt(dashData.revenue?.today)}</p>
+                                            </div>
+                                            <div class="bg-white rounded-2xl p-5 shadow-sm border border-stone-100">
+                                                <p class="text-xs text-stone-400 uppercase tracking-wider mb-1">Este Mês</p>
+                                                <p class="text-2xl font-bold text-moriah-brown">{fmt(dashData.revenue?.month)}</p>
+                                            </div>
+                                            <div class="bg-white rounded-2xl p-5 shadow-sm border border-stone-100">
+                                                <p class="text-xs text-stone-400 uppercase tracking-wider mb-1">Aguardando</p>
+                                                <p class="text-2xl font-bold text-amber-500">{dashData.pending?.count || 0} pedidos</p>
+                                                <p class="text-xs text-stone-400 mt-1">{fmt(dashData.pending?.total)}</p>
+                                            </div>
+                                            <div class="bg-white rounded-2xl p-5 shadow-sm border border-stone-100">
+                                                <p class="text-xs text-stone-400 uppercase tracking-wider mb-1">Estoque Baixo</p>
+                                                <p class="text-2xl font-bold text-red-500">{(dashData.lowStock || []).length} produtos</p>
+                                            </div>
+                                        </div>
+                                        {/* Pedidos pendentes */}
+                                        {(dashData.pending?.sales || []).length > 0 && (
+                                            <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
+                                                <div class="px-6 py-4 border-b border-stone-100 flex items-center gap-2">
+                                                    <LucideIcon name="clock" className="w-4 h-4 text-amber-500" />
+                                                    <h3 class="font-bold text-stone-800">Pedidos Aguardando Pagamento</h3>
+                                                </div>
+                                                <div class="divide-y divide-stone-50">
+                                                    {(dashData.pending?.sales || []).map(s => (
+                                                        <div key={s.id} class="px-6 py-3 flex items-center justify-between gap-4">
+                                                            <div>
+                                                                <p class="font-medium text-stone-800">{s.customer_name}</p>
+                                                                <p class="text-xs text-stone-400">{fmtDate(s.created_at)} · {s.shipping_service || 'Correios'}</p>
+                                                            </div>
+                                                            <div class="text-right">
+                                                                <p class="font-bold text-moriah-brown">{fmt(s.total)}</p>
+                                                                <span class="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">{s.status}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Estoque baixo */}
+                                        {(dashData.lowStock || []).length > 0 && (
+                                            <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
+                                                <div class="px-6 py-4 border-b border-stone-100 flex items-center gap-2">
+                                                    <LucideIcon name="alert-triangle" className="w-4 h-4 text-red-500" />
+                                                    <h3 class="font-bold text-stone-800">Produtos com Estoque Baixo</h3>
+                                                </div>
+                                                <div class="divide-y divide-stone-50">
+                                                    {(dashData.lowStock || []).map(p => (
+                                                        <div key={p.id} class="px-6 py-3 flex items-center justify-between gap-4">
+                                                            <div>
+                                                                <p class="font-medium text-stone-800">{p.name}</p>
+                                                                <p class="text-xs text-stone-400">{p.category}</p>
+                                                            </div>
+                                                            <span class={`text-sm font-bold px-3 py-1 rounded-full ${p.stock === 0 ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>
+                                                                {p.stock === 0 ? 'Esgotado' : `${p.stock} un.`}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Últimas vendas pagas */}
+                                        {(dashData.recentSales || []).length > 0 && (
+                                            <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
+                                                <div class="px-6 py-4 border-b border-stone-100 flex items-center gap-2">
+                                                    <LucideIcon name="check-circle" className="w-4 h-4 text-emerald-500" />
+                                                    <h3 class="font-bold text-stone-800">Últimas Vendas Pagas</h3>
+                                                </div>
+                                                <div class="divide-y divide-stone-50">
+                                                    {(dashData.recentSales || []).map(s => (
+                                                        <div key={s.id} class="px-6 py-3 flex items-center justify-between gap-4">
+                                                            <div>
+                                                                <p class="font-medium text-stone-800">{s.customer_name || 'Cliente PDV'}</p>
+                                                                <p class="text-xs text-stone-400">{fmtDate(s.created_at)} · {s.method || '—'}</p>
+                                                            </div>
+                                                            <p class="font-bold text-emerald-600">{fmt(s.total)}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    }
+
                     case 'sales': {
                         const filteredSales = sales.filter(s => {
                             const saleDate = new Date(s.created_at || s.date);
