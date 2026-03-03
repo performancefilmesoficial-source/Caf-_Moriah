@@ -539,37 +539,37 @@ const transporter = nodemailer.createTransport({
 });
 
 // Envia email de alerta ao dono da loja sobre novo pedido online
-function notifyOwnerNewOrder({ customerName, customerPhone, customerEmail, customerCep, totalAmount, billingType, shippingService, shippingCost, cartItems, invoiceUrl }) {
-    if (!process.env.SMTP_USER) return;
-    const ownerEmail = process.env.OWNER_EMAIL || process.env.SMTP_USER;
-    const shippingLabel = shippingService === 'RETIRADA' ? '🏪 Retirada na Loja' :
-        (shippingService && shippingService.includes('Expressa')) ? '⚡ Entrega Expressa Moriah (Feira de Santana)' :
-        (shippingService && shippingService.includes('Padrão Feira')) ? '📦 Entrega Padrão Feira de Santana' :
-        `📦 Correios — ${shippingService || 'A definir'}`;
-    const shippingCostLabel = parseFloat(shippingCost) > 0 ? `R$ ${parseFloat(shippingCost).toFixed(2).replace('.', ',')}` : 'GRÁTIS';
-    const itemsHtml = (cartItems || []).map(i => `<li>${i.name} × ${i.quantity} — R$ ${parseFloat(i.price).toFixed(2).replace('.', ',')}</li>`).join('');
-    const paymentLabel = billingType === 'CREDIT_CARD' ? '💳 Cartão de Crédito' : '🟣 PIX';
-    const html = `
-        <h2>☕ Novo Pedido Online — Moriah Café</h2>
-        <table style="border-collapse:collapse;font-family:sans-serif;font-size:14px">
-            <tr><td style="padding:4px 12px 4px 0"><strong>Cliente:</strong></td><td>${customerName}</td></tr>
-            <tr><td style="padding:4px 12px 4px 0"><strong>Telefone:</strong></td><td>${customerPhone || '—'}</td></tr>
-            <tr><td style="padding:4px 12px 4px 0"><strong>Email:</strong></td><td>${customerEmail}</td></tr>
-            <tr><td style="padding:4px 12px 4px 0"><strong>CEP:</strong></td><td>${customerCep || '—'}</td></tr>
-            <tr><td style="padding:4px 12px 4px 0"><strong>Pagamento:</strong></td><td>${paymentLabel}</td></tr>
-            <tr><td style="padding:4px 12px 4px 0"><strong>Entrega:</strong></td><td>${shippingLabel} — ${shippingCostLabel}</td></tr>
-            <tr><td style="padding:4px 12px 4px 0"><strong>Total:</strong></td><td><strong>R$ ${parseFloat(totalAmount).toFixed(2).replace('.', ',')}</strong></td></tr>
-        </table>
-        <br><strong>Itens:</strong><ul>${itemsHtml}</ul>
-        ${invoiceUrl ? `<br><a href="${invoiceUrl}" style="background:#8B5E3C;color:white;padding:8px 16px;border-radius:8px;text-decoration:none">Ver Fatura</a>` : ''}
-        <br><br><small>Acesse o PDV para gerar a etiqueta ou acompanhar o pedido.</small>
-    `;
-    transporter.sendMail({
-        from: '"Moriah Café PDV" <atendimento@moriahcafe.com>',
-        to: ownerEmail,
-        subject: `🛒 Novo pedido: ${customerName} — R$ ${parseFloat(totalAmount).toFixed(2).replace('.', ',')}`,
-        html
-    }).catch(err => console.error('[OWNER NOTIFY] Erro ao enviar email ao dono:', err.message));
+// Envia notificação WhatsApp ao dono via CallMeBot (gratuito)
+// Configurar no Coolify: CALLMEBOT_PHONE (ex: 5575999999999) e CALLMEBOT_APIKEY
+function notifyOwnerNewOrder({ customerName, customerPhone, customerCep, totalAmount, billingType, shippingService, shippingCost, cartItems }) {
+    const cbPhone = process.env.CALLMEBOT_PHONE;
+    const cbKey   = process.env.CALLMEBOT_APIKEY;
+    if (!cbPhone || !cbKey) return;
+
+    const shippingLabel = shippingService === 'RETIRADA' ? 'Retirada na Loja' :
+        (shippingService && shippingService.includes('Expressa')) ? 'Expressa Moriah (Feira)' :
+        (shippingService && shippingService.includes('Padrão Feira')) ? 'Padrão Feira de Santana' :
+        `Correios - ${shippingService || 'A definir'}`;
+    const shippingCostLabel = parseFloat(shippingCost) > 0
+        ? `R$ ${parseFloat(shippingCost).toFixed(2).replace('.', ',')}`
+        : 'GRATIS';
+    const paymentLabel = billingType === 'CREDIT_CARD' ? 'Cartao de Credito' : 'PIX';
+    const itemsList = (cartItems || []).map(i => `  - ${i.name} x${i.quantity}`).join('\n');
+
+    const msg = [
+        '☕ *Novo Pedido - Moriah Cafe*',
+        `👤 Cliente: ${customerName}`,
+        `📞 Tel: ${customerPhone || 'nao informado'}`,
+        `📮 CEP: ${customerCep || 'nao informado'}`,
+        `💰 Total: R$ ${parseFloat(totalAmount).toFixed(2).replace('.', ',')}`,
+        `💳 Pagamento: ${paymentLabel}`,
+        `🚚 Entrega: ${shippingLabel} - ${shippingCostLabel}`,
+        `📦 Itens:\n${itemsList}`,
+        `\nAcesse o PDV para acompanhar.`
+    ].join('\n');
+
+    const url = `https://api.callmebot.com/whatsapp.php?phone=${cbPhone}&text=${encodeURIComponent(msg)}&apikey=${cbKey}`;
+    axios.get(url).catch(err => console.error('[WA NOTIFY] Erro ao enviar WhatsApp:', err.message));
 }
 
 app.post('/api/checkout', async (req, res) => {
