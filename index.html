@@ -529,8 +529,13 @@
             useEffect(() => { localStorage.setItem('moriah_customers', JSON.stringify(customers)); }, [customers]);
 
             // Busca vendas do banco de dados ao abrir a aba de vendas
+            // Auto-refresh a cada 30s para capturar pedidos online automaticamente
             useEffect(() => {
-                if (view === 'sales') fetchSales();
+                if (view === 'sales') {
+                    fetchSales();
+                    const interval = setInterval(() => fetchSales(), 30000);
+                    return () => clearInterval(interval);
+                }
             }, [view]);
 
             const logoUrl = 'Verde.png';

@@ -531,12 +531,46 @@ app.post('/api/login', async (req, res) => {
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com', // Substituir pelo configurado pelo usuario
     port: process.env.SMTP_PORT || 587,
-    secure: false, // true para port 465, false para outras 
+    secure: false, // true para port 465, false para outras
     auth: {
         user: process.env.SMTP_USER || 'seuemail@moriahcafe.com.br',
         pass: process.env.SMTP_PASS || 'suasenha',
     },
 });
+
+// Envia email de alerta ao dono da loja sobre novo pedido online
+function notifyOwnerNewOrder({ customerName, customerPhone, customerEmail, customerCep, totalAmount, billingType, shippingService, shippingCost, cartItems, invoiceUrl }) {
+    if (!process.env.SMTP_USER) return;
+    const ownerEmail = process.env.OWNER_EMAIL || process.env.SMTP_USER;
+    const shippingLabel = shippingService === 'RETIRADA' ? '🏪 Retirada na Loja' :
+        (shippingService && shippingService.includes('Expressa')) ? '⚡ Entrega Expressa Moriah (Feira de Santana)' :
+        (shippingService && shippingService.includes('Padrão Feira')) ? '📦 Entrega Padrão Feira de Santana' :
+        `📦 Correios — ${shippingService || 'A definir'}`;
+    const shippingCostLabel = parseFloat(shippingCost) > 0 ? `R$ ${parseFloat(shippingCost).toFixed(2).replace('.', ',')}` : 'GRÁTIS';
+    const itemsHtml = (cartItems || []).map(i => `<li>${i.name} × ${i.quantity} — R$ ${parseFloat(i.price).toFixed(2).replace('.', ',')}</li>`).join('');
+    const paymentLabel = billingType === 'CREDIT_CARD' ? '💳 Cartão de Crédito' : '🟣 PIX';
+    const html = `
+        <h2>☕ Novo Pedido Online — Moriah Café</h2>
+        <table style="border-collapse:collapse;font-family:sans-serif;font-size:14px">
+            <tr><td style="padding:4px 12px 4px 0"><strong>Cliente:</strong></td><td>${customerName}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0"><strong>Telefone:</strong></td><td>${customerPhone || '—'}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0"><strong>Email:</strong></td><td>${customerEmail}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0"><strong>CEP:</strong></td><td>${customerCep || '—'}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0"><strong>Pagamento:</strong></td><td>${paymentLabel}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0"><strong>Entrega:</strong></td><td>${shippingLabel} — ${shippingCostLabel}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0"><strong>Total:</strong></td><td><strong>R$ ${parseFloat(totalAmount).toFixed(2).replace('.', ',')}</strong></td></tr>
+        </table>
+        <br><strong>Itens:</strong><ul>${itemsHtml}</ul>
+        ${invoiceUrl ? `<br><a href="${invoiceUrl}" style="background:#8B5E3C;color:white;padding:8px 16px;border-radius:8px;text-decoration:none">Ver Fatura</a>` : ''}
+        <br><br><small>Acesse o PDV para gerar a etiqueta ou acompanhar o pedido.</small>
+    `;
+    transporter.sendMail({
+        from: '"Moriah Café PDV" <atendimento@moriahcafe.com>',
+        to: ownerEmail,
+        subject: `🛒 Novo pedido: ${customerName} — R$ ${parseFloat(totalAmount).toFixed(2).replace('.', ',')}`,
+        html
+    }).catch(err => console.error('[OWNER NOTIFY] Erro ao enviar email ao dono:', err.message));
+}
 
 app.post('/api/checkout', async (req, res) => {
     const { customerName, customerEmail, customerCpf, customerPhone, customerCep, customerAddressNumber, cartItems, totalAmount, billingType, cardData } = req.body;
@@ -556,6 +590,8 @@ app.post('/api/checkout', async (req, res) => {
                     [saleId, item.id, item.name, item.quantity, item.price]);
                 await dbUtil.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
             }
+            // Notificar dono da loja sobre o novo pedido manual
+            notifyOwnerNewOrder({ customerName, customerPhone, customerEmail, customerCep: customerCep || '', totalAmount, billingType, shippingService: req.body.shippingService, shippingCost: req.body.shippingCost, cartItems, invoiceUrl: null });
             // PIX simulado para o cliente finalizar
             const pixPayload = `00020126360014BR.GOV.BCB.PIX0114+5575992073245520400005303986540${totalAmount.toFixed(2)}5802BR5912MORIAH CAFE6009SAO PAULO62070503***6304ABCD`;
             return res.status(200).json({
@@ -666,7 +702,7 @@ app.post('/api/checkout', async (req, res) => {
             // Pagamento foi aprovado mas não salvou — loga para investigação manual
         }
 
-        // Enviar e-mail de confirmação (fire-and-forget — não bloqueia a resposta)
+        // Enviar e-mail de confirmação ao cliente (fire-and-forget)
         if (process.env.SMTP_USER) {
             const mailOptions = {
                 from: '"Moriah Café Especial" <atendimento@moriahcafe.com>',
@@ -676,6 +712,8 @@ app.post('/api/checkout', async (req, res) => {
             };
             transporter.sendMail(mailOptions).catch(() => { });
         }
+        // Notificar dono da loja sobre o novo pedido
+        notifyOwnerNewOrder({ customerName, customerPhone, customerEmail, customerCep, totalAmount, billingType, shippingService: req.body.shippingService, shippingCost: req.body.shippingCost, cartItems, invoiceUrl });
 
         res.status(200).json({
             success: true,
