@@ -4,7 +4,13 @@ const nodemailer = require('nodemailer');
 const multer = require('multer');
 const csv = require('csv-parser');
 const axios = require('axios');
+const crypto = require('crypto');
 require('dotenv').config();
+
+// Hash de senha com salt fixo (SHA-256) — sem dependências externas
+function hashPwd(password) {
+    return crypto.createHash('sha256').update(password + 'moriah_pdv_2024').digest('hex');
+}
 
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
 const ASAAS_URL = 'https://api.asaas.com/v3';
@@ -234,6 +240,24 @@ async function initTables(dbUtil, isMysql) {
     if (rows[0].count === 0) {
         await dbUtil.run("INSERT INTO site_settings (hero_title) VALUES ('O Cafe dos Seus Sonhos')");
     }
+
+    // Tabela de usuários do PDV (login compartilhado entre dispositivos)
+    await dbUtil.run(`CREATE TABLE IF NOT EXISTS pdv_users (
+        id INTEGER PRIMARY KEY ${autoInc},
+        name TEXT NOT NULL,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        role TEXT DEFAULT 'operator',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+    // Cria admin padrão se não existir nenhum usuário
+    const [uRows] = await dbUtil.query('SELECT COUNT(*) as count FROM pdv_users');
+    if (uRows[0].count === 0) {
+        await dbUtil.run('INSERT INTO pdv_users (name, username, password_hash, role) VALUES (?, ?, ?, ?)',
+            ['Administrador', 'admin', hashPwd('root'), 'admin']);
+        console.log('[DB] Usuário padrão criado: admin / root');
+    }
+    console.log('[DB] Tabela pdv_users: OK');
     console.log('[DB] Inicializacao concluida com sucesso!');
 }
 
@@ -248,6 +272,70 @@ setupDatabase().catch(console.error);
 // Rota de Teste para verificar se a API está online
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Moriah PDV Backend funcionando!' });
+});
+
+// ==== AUTH / USUÁRIOS PDV ====
+
+// Login — valida credenciais e retorna dados do usuário (sem senha)
+app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Usuário e senha obrigatórios.' });
+    try {
+        const [rows] = await dbUtil.query('SELECT * FROM pdv_users WHERE username = ?', [username]);
+        if (!rows.length || rows[0].password_hash !== hashPwd(password)) {
+            return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+        }
+        const u = rows[0];
+        res.json({ id: u.id, name: u.name, username: u.username, role: u.role });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Listar usuários (sem senha)
+app.get('/api/users', async (req, res) => {
+    try {
+        const [rows] = await dbUtil.query('SELECT id, name, username, role, created_at FROM pdv_users ORDER BY id');
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Criar usuário
+app.post('/api/users', async (req, res) => {
+    const { name, username, password, role } = req.body;
+    if (!name || !username || !password) return res.status(400).json({ error: 'Nome, usuário e senha são obrigatórios.' });
+    try {
+        await dbUtil.run('INSERT INTO pdv_users (name, username, password_hash, role) VALUES (?, ?, ?, ?)',
+            [name, username, hashPwd(password), role || 'operator']);
+        res.json({ success: true });
+    } catch (err) {
+        const isDup = err.message.includes('UNIQUE') || err.message.includes('Duplicate');
+        res.status(isDup ? 400 : 500).json({ error: isDup ? 'Este usuário já existe.' : err.message });
+    }
+});
+
+// Excluir usuário
+app.delete('/api/users/:id', async (req, res) => {
+    try {
+        await dbUtil.run('DELETE FROM pdv_users WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Alterar senha
+app.put('/api/users/:id/password', async (req, res) => {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'Nova senha obrigatória.' });
+    try {
+        await dbUtil.run('UPDATE pdv_users SET password_hash = ? WHERE id = ?', [hashPwd(password), req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ---- PRODUTOS ----
