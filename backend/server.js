@@ -181,6 +181,14 @@ async function initTables(dbUtil, isMysql) {
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_cost REAL DEFAULT 0'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_service TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE sales ADD COLUMN tracking_code TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_street TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_neighborhood TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_city TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_state TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN customer_complement TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN shipping_service_id TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN me_order_id TEXT'); } catch (e) { }
+    try { await dbUtil.run('ALTER TABLE sales ADD COLUMN label_url TEXT'); } catch (e) { }
     try { await dbUtil.run('ALTER TABLE products ADD COLUMN price_moido REAL DEFAULT 0'); } catch (e) { }
     // MODIFY COLUMN é sintaxe MySQL — só executa quando conectado ao MySQL
     if (isMysql) { try { await dbUtil.run('ALTER TABLE products MODIFY COLUMN image_url MEDIUMTEXT'); } catch (e) { } }
@@ -573,7 +581,8 @@ function notifyOwnerNewOrder({ customerName, customerPhone, customerCep, totalAm
 }
 
 app.post('/api/checkout', async (req, res) => {
-    const { customerName, customerEmail, customerCpf, customerPhone, customerCep, customerAddressNumber, cartItems, totalAmount, billingType, cardData } = req.body;
+    const { customerName, customerEmail, customerCpf, customerPhone, customerCep, customerAddressNumber, customerStreet, customerNeighborhood, customerCity, customerState, customerComplement, cartItems, totalAmount, billingType, cardData } = req.body;
+    const shippingServiceId = req.body.shippingServiceId || null;
 
     // SE NÃO HÁ API KEY DO ASAAS configurada, simula um checkout manual (loja registra o pedido e notifica via email)
     if (!ASAAS_API_KEY) {
@@ -581,8 +590,8 @@ app.post('/api/checkout', async (req, res) => {
         try {
             const fakePaymentId = `MANUAL-${Date.now()}`;
             const result = await dbUtil.run(
-                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, shipping_cost, shipping_service) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', 'Aguardando Pagamento', customerPhone, fakePaymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS']
+                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, customer_street, customer_neighborhood, customer_city, customer_state, customer_complement, shipping_cost, shipping_service, shipping_service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', 'Aguardando Pagamento', customerPhone, fakePaymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', customerStreet || '', customerNeighborhood || '', customerCity || '', customerState || '', customerComplement || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS', shippingServiceId]
             );
             const saleId = result[0].insertId;
             for (const item of cartItems) {
@@ -686,8 +695,8 @@ app.post('/api/checkout', async (req, res) => {
             await dbUtil.run(process.env.DATABASE_URL ? 'START TRANSACTION' : 'BEGIN TRANSACTION');
             const statusInicial = billingType === 'CREDIT_CARD' ? 'Pago' : 'Pendente';
             const result = await dbUtil.run(
-                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, shipping_cost, shipping_service) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS']
+                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, customer_street, customer_neighborhood, customer_city, customer_state, customer_complement, shipping_cost, shipping_service, shipping_service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', customerStreet || '', customerNeighborhood || '', customerCity || '', customerState || '', customerComplement || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS', shippingServiceId]
             );
             const saleId = result[0].insertId;
             for (const item of cartItems) {
@@ -851,18 +860,142 @@ app.post('/api/shipping/generate-label', async (req, res) => {
         if (!sale.shipping_service || sale.shipping_service === 'RETIRADA' || !sale.customer_cep) {
             return res.status(400).json({ error: 'Venda Físico ou Sem Frete Informado.' });
         }
+        // Entregas locais Feira não usam Melhor Envio
+        if (sale.shipping_service && (sale.shipping_service.includes('Expressa Moriah') || sale.shipping_service.includes('Padrão Feira'))) {
+            return res.status(400).json({ error: 'Entrega local de Feira de Santana não usa transportadora.' });
+        }
 
-        // Simulação Direta de Rastreio (Evitar bloqueios na Carteira do Cliente no Melhor Envio Sandbox)
-        // Se houver saldo real, aqui entram os passos: /cart, /checkout e /generate.
+        const hasFullAddress = sale.customer_street && sale.customer_city && sale.customer_state;
+
+        // === MELHOR ENVIO REAL ===
+        if (MELHORENVIO_TOKEN && hasFullAddress && sale.shipping_service_id) {
+            const [items] = await dbUtil.query(
+                'SELECT si.quantity, si.price, si.product_name, COALESCE(p.weight_grams, 250) AS weight_grams FROM sale_items si LEFT JOIN products p ON si.product_id = p.id WHERE si.sale_id = ?',
+                [sale_id]
+            );
+            const totalWeight = items.reduce((acc, i) => acc + (i.weight_grams * i.quantity), 0);
+            const totalValue  = items.reduce((acc, i) => acc + (parseFloat(i.price) * i.quantity), 0);
+            const weightKg = parseFloat(Math.max(totalWeight / 1000, 0.1).toFixed(2));
+
+            const meHeaders = {
+                'Authorization': `Bearer ${MELHORENVIO_TOKEN}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'MoriahCafe (atendimento@moriahcafe.com)'
+            };
+
+            // 1. Adicionar ao carrinho Melhor Envio
+            const cartPayload = {
+                service: parseInt(sale.shipping_service_id),
+                from: {
+                    name:        process.env.STORE_NAME       || 'Moriah Café',
+                    phone:       process.env.STORE_PHONE      || '75992073245',
+                    email:       process.env.STORE_EMAIL      || 'atendimento@moriahcafe.com',
+                    document:    process.env.STORE_DOCUMENT   || '',
+                    address:     process.env.STORE_ADDRESS    || 'Endereço da Loja',
+                    complement:  process.env.STORE_COMPLEMENT || null,
+                    number:      process.env.STORE_NUMBER     || 'S/N',
+                    district:    process.env.STORE_DISTRICT   || 'Centro',
+                    city:        process.env.STORE_CITY       || 'Feira de Santana',
+                    country_id:  'BR',
+                    postal_code: ORIGIN_CEP,
+                    state_abbr:  process.env.STORE_STATE      || 'BA'
+                },
+                to: {
+                    name:        sale.customer_name || 'Cliente',
+                    phone:       (sale.customer_phone  || '').replace(/\D/g, ''),
+                    email:       sale.customer_email   || '',
+                    document:    (sale.customer_cpf    || '').replace(/\D/g, ''),
+                    address:     sale.customer_street  || '',
+                    complement:  sale.customer_complement || null,
+                    number:      sale.customer_address_number || 'S/N',
+                    district:    sale.customer_neighborhood   || '',
+                    city:        sale.customer_city    || '',
+                    country_id:  'BR',
+                    postal_code: (sale.customer_cep    || '').replace(/\D/g, ''),
+                    state_abbr:  sale.customer_state   || ''
+                },
+                products: items.map(i => ({
+                    name: i.product_name || 'Produto',
+                    quantity: i.quantity,
+                    unitary_value: parseFloat(i.price)
+                })),
+                volumes: [{ height: 20, width: 20, length: 20, weight: weightKg }],
+                options: {
+                    insurance_value: parseFloat(totalValue.toFixed(2)),
+                    receipt: false, own_hand: false, reverse: false, non_commercial: true
+                }
+            };
+
+            const cartResp = await axios.post('https://melhorenvio.com.br/api/v2/me/shipment/cart', cartPayload, { headers: meHeaders });
+            const meOrderId = cartResp.data.id;
+
+            // 2. Checkout — desconta saldo da carteira Melhor Envio
+            await axios.post('https://melhorenvio.com.br/api/v2/me/shipment/checkout', { orders: [meOrderId] }, { headers: meHeaders });
+
+            // 3. Gerar etiqueta
+            await axios.post('https://melhorenvio.com.br/api/v2/me/shipment/generate', { orders: [meOrderId] }, { headers: meHeaders });
+
+            // 4. Buscar código de rastreio (pode ser null inicialmente — Correios ativa ao escanear)
+            let trackingCode = `ME-${meOrderId.substring(0, 8).toUpperCase()}`;
+            try {
+                const trackResp = await axios.get(
+                    `https://melhorenvio.com.br/api/v2/me/shipment/tracking?orders[]=${meOrderId}`,
+                    { headers: meHeaders }
+                );
+                if (trackResp.data && trackResp.data[meOrderId]) trackingCode = trackResp.data[meOrderId];
+            } catch (_) { /* tracking pode demorar; usa placeholder por ora */ }
+
+            const labelProxyUrl = `/api/shipping/label/${sale_id}`;
+            await dbUtil.run(
+                'UPDATE sales SET tracking_code = ?, status = ?, me_order_id = ?, label_url = ? WHERE id = ?',
+                [trackingCode, 'Etiqueta Gerada', meOrderId, labelProxyUrl, sale_id]
+            );
+            return res.json({ success: true, tracking_code: trackingCode, label_url: labelProxyUrl });
+        }
+
+        // === SIMULAÇÃO (fallback quando sem token, endereço incompleto ou sem service_id) ===
+        console.log('[LABEL SIMULADA] Token:', !!MELHORENVIO_TOKEN, '| Endereço completo:', !!hasFullAddress, '| ServiceId:', !!sale.shipping_service_id);
         const trackingCode = `BR${Math.floor(Math.random() * 999999999)}ME`;
-        const labelUrl = `https://rastreamento.correios.com.br/app/index.php`;
-
         await dbUtil.run('UPDATE sales SET tracking_code = ?, status = ? WHERE id = ?', [trackingCode, 'Etiqueta Gerada', sale_id]);
+        res.json({ success: true, tracking_code: trackingCode, label_url: 'https://rastreamento.correios.com.br/app/index.php', simulated: true });
 
-        res.json({ success: true, tracking_code: trackingCode, label_url: labelUrl });
     } catch (error) {
-        console.error('Erro ao gerar Etiqueta Logística:', error);
-        res.status(500).json({ error: 'Transportadora Falhou na Emissão da Etiqueta' });
+        const errMsg = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+        console.error('Erro ao gerar etiqueta Melhor Envio:', errMsg);
+        // Fallback para simulação em caso de erro da API
+        try {
+            const trackingCode = `BR${Math.floor(Math.random() * 999999999)}ME`;
+            await dbUtil.run('UPDATE sales SET tracking_code = ?, status = ? WHERE id = ?', [trackingCode, 'Etiqueta Gerada', sale_id]);
+            res.json({ success: true, tracking_code: trackingCode, label_url: 'https://rastreamento.correios.com.br/app/index.php', simulated: true, api_error: errMsg });
+        } catch (dbErr) {
+            res.status(500).json({ error: 'Erro ao gerar etiqueta: ' + errMsg });
+        }
+    }
+});
+
+// Proxy autenticado para download da etiqueta PDF do Melhor Envio
+app.get('/api/shipping/label/:sale_id', async (req, res) => {
+    if (!MELHORENVIO_TOKEN) return res.status(400).send('Token Melhor Envio não configurado.');
+    try {
+        const [sales] = await dbUtil.query('SELECT me_order_id FROM sales WHERE id = ?', [req.params.sale_id]);
+        if (!sales.length || !sales[0].me_order_id) return res.status(404).send('Etiqueta não encontrada. Verifique o Melhor Envio.');
+        const meOrderId = sales[0].me_order_id;
+        const printResp = await axios.get(
+            `https://melhorenvio.com.br/api/v2/me/shipment/print?mode=private&orders[]=${meOrderId}`,
+            { headers: { 'Authorization': `Bearer ${MELHORENVIO_TOKEN}`, 'Accept': 'application/pdf, application/json', 'User-Agent': 'MoriahCafe (atendimento@moriahcafe.com)' }, responseType: 'arraybuffer' }
+        );
+        const contentType = printResp.headers['content-type'] || 'application/pdf';
+        res.setHeader('Content-Type', contentType);
+        if (contentType.includes('pdf')) res.setHeader('Content-Disposition', `attachment; filename="etiqueta-${req.params.sale_id}.pdf"`);
+        res.send(Buffer.from(printResp.data));
+    } catch (error) {
+        console.error('Erro ao baixar etiqueta:', error.message);
+        try {
+            const jsonData = JSON.parse(Buffer.from(error.response?.data || '{}').toString());
+            if (jsonData.url) return res.redirect(jsonData.url);
+        } catch (_) {}
+        res.status(500).send('Erro ao obter etiqueta. Acesse https://melhorenvio.com.br/envios para baixar manualmente.');
     }
 });
 

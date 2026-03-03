@@ -101,6 +101,7 @@
             const [shippingCep, setShippingCep] = React.useState('');
             const [shippingCost, setShippingCost] = React.useState(0);
             const [shippingService, setShippingService] = React.useState('');
+            const [shippingServiceId, setShippingServiceId] = React.useState(null);
             const [selectedProduct, setSelectedProduct] = React.useState(null);
 
             // Helper genérico para Imagens vindas do Backend (String comum ou Array JSON)
@@ -732,7 +733,7 @@
                                         {/* Retirada na Loja — sempre visível */}
                                         <label
                                             className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-colors mb-2 ${shippingService === 'RETIRADA' ? 'border-moriah-green bg-moriah-green/5' : 'border-stone-200 hover:border-moriah-green/50'}`}
-                                            onClick={() => { setShippingCost(0); setShippingService('RETIRADA'); }}
+                                            onClick={() => { setShippingCost(0); setShippingService('RETIRADA'); setShippingServiceId(null); }}
                                         >
                                             <div className="flex items-center gap-3">
                                                 <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${shippingService === 'RETIRADA' ? 'border-moriah-green' : 'border-stone-300'}`}>
@@ -756,7 +757,7 @@
                                                     const isSelected = shippingService === opt.name;
                                                     const isFree = opt.free || parseFloat(opt.price) === 0;
                                                     return (
-                                                        <label key={opt.id} onClick={() => { setShippingCost(parseFloat(opt.price)); setShippingService(opt.name); }}
+                                                        <label key={opt.id} onClick={() => { setShippingCost(parseFloat(opt.price)); setShippingService(opt.name); setShippingServiceId(opt.id); }}
                                                             className={`flex items-center justify-between p-3 border-2 rounded-xl cursor-pointer transition-all ${isSelected ? 'border-moriah-orange bg-moriah-orange/5' : 'border-stone-200 hover:border-moriah-orange/50'}`}>
                                                             <div className="flex items-center gap-3">
                                                                 <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? 'border-moriah-orange' : 'border-stone-300'}`}>
@@ -782,7 +783,7 @@
                                                 {shippingOptions.map(opt => {
                                                     const isSelected = shippingService === opt.name;
                                                     return (
-                                                        <label key={opt.id} onClick={() => { setShippingCost(parseFloat(opt.price)); setShippingService(opt.name); }}
+                                                        <label key={opt.id} onClick={() => { setShippingCost(parseFloat(opt.price)); setShippingService(opt.name); setShippingServiceId(opt.id); }}
                                                             className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-colors ${isSelected ? 'border-moriah-orange bg-moriah-orange/5' : 'border-stone-200 hover:border-moriah-gold'}`}>
                                                             <div className="flex items-center gap-3">
                                                                 <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isSelected ? 'border-moriah-orange' : 'border-stone-300'}`}>
@@ -964,7 +965,25 @@
                 if (!isCheckingOut) return null;
 
                 const [step, setStep] = React.useState(1); // 1: Info & Pagamento, 2: PIX Checkout/Loading, 3: Sucesso
-                const [customerData, setCustomerData] = React.useState({ name: '', email: '', cpf: '', phone: '', postalCode: '', addressNumber: '' });
+                const [customerData, setCustomerData] = React.useState({ name: '', email: '', cpf: '', phone: '', postalCode: '', addressNumber: '', street: '', neighborhood: '', complement: '', city: '', state: '' });
+
+                // Auto-preenche endereço via ViaCEP quando o CEP tiver 8 dígitos
+                React.useEffect(() => {
+                    const cep = customerData.postalCode.replace(/\D/g, '');
+                    if (cep.length !== 8) return;
+                    fetch(`https://viacep.com.br/ws/${cep}/json/`)
+                        .then(r => r.json())
+                        .then(d => {
+                            if (!d.erro) setCustomerData(prev => ({
+                                ...prev,
+                                street:       d.logradouro || prev.street,
+                                neighborhood: d.bairro     || prev.neighborhood,
+                                city:         d.localidade || prev.city,
+                                state:        d.uf         || prev.state
+                            }));
+                        })
+                        .catch(() => {});
+                }, [customerData.postalCode]);
                 const [paymentMethod, setPaymentMethod] = React.useState('PIX');
                 const [cardData, setCardData] = React.useState({ holderName: '', number: '', expiryMonth: '', expiryYear: '', ccv: '' });
                 const [pixData, setPixData] = React.useState(null);
@@ -1015,6 +1034,11 @@
                                 customerPhone: customerData.phone,
                                 customerCep: customerData.postalCode,
                                 customerAddressNumber: customerData.addressNumber,
+                                customerStreet: customerData.street,
+                                customerNeighborhood: customerData.neighborhood,
+                                customerCity: customerData.city,
+                                customerState: customerData.state,
+                                customerComplement: customerData.complement,
                                 cartItems: cart.map(item => ({
                                     ...item,
                                     name: item.grind ? `${item.name} (${item.grind === 'moido' ? 'Pó/Moído' : 'Grão'})` : item.name
@@ -1023,10 +1047,11 @@
                                 billingType: paymentMethod,
                                 cardData: paymentMethod === 'CREDIT_CARD' ? {
                                     ...cardData,
-                                    number: cardData.number.replace(/\s/g, '') // Remove espaços de formatação
+                                    number: cardData.number.replace(/\s/g, '')
                                 } : null,
                                 shippingCost: shippingCost,
-                                shippingService: shippingService || 'CORREIOS'
+                                shippingService: shippingService || 'CORREIOS',
+                                shippingServiceId: shippingServiceId
                             })
                         });
 
@@ -1083,10 +1108,22 @@
 
                                         <div className="animate-in fade-in zoom-in-95">
                                             <h3 className="font-bold text-lg text-moriah-brown mb-4 flex items-center gap-2 mt-2"><LucideIcon name="map-pin" className="w-5 h-5" /> Endereço de Entrega / Faturação</h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <input required type="text" placeholder="CEP numérico" value={customerData.postalCode} onChange={e => setCustomerData({ ...customerData, postalCode: e.target.value.replace(/\D/g, '') })} className="px-4 py-3 bg-white border border-stone-200 rounded-xl outline-none focus:border-moriah-gold text-sm" maxLength="8" />
-                                                <input required type="text" placeholder="Número da Residência" value={customerData.addressNumber} onChange={e => setCustomerData({ ...customerData, addressNumber: e.target.value })} className="px-4 py-3 bg-white border border-stone-200 rounded-xl outline-none focus:border-moriah-gold text-sm" />
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                                <input required type="text" placeholder="CEP (8 dígitos)" value={customerData.postalCode} onChange={e => setCustomerData({ ...customerData, postalCode: e.target.value.replace(/\D/g, '') })} className="px-4 py-3 bg-white border border-stone-200 rounded-xl outline-none focus:border-moriah-gold text-sm" maxLength="8" />
+                                                <input required type="text" placeholder="Número" value={customerData.addressNumber} onChange={e => setCustomerData({ ...customerData, addressNumber: e.target.value })} className="px-4 py-3 bg-white border border-stone-200 rounded-xl outline-none focus:border-moriah-gold text-sm" />
+                                                <input type="text" placeholder="Complemento (apto, bloco...)" value={customerData.complement} onChange={e => setCustomerData({ ...customerData, complement: e.target.value })} className="col-span-2 md:col-span-1 px-4 py-3 bg-white border border-stone-200 rounded-xl outline-none focus:border-moriah-gold text-sm" />
                                             </div>
+                                            {shippingService !== 'RETIRADA' && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                                                    <input required type="text" placeholder="Rua / Logradouro" value={customerData.street} onChange={e => setCustomerData({ ...customerData, street: e.target.value })} className="px-4 py-3 bg-white border border-stone-200 rounded-xl outline-none focus:border-moriah-gold text-sm" />
+                                                    <input required type="text" placeholder="Bairro" value={customerData.neighborhood} onChange={e => setCustomerData({ ...customerData, neighborhood: e.target.value })} className="px-4 py-3 bg-white border border-stone-200 rounded-xl outline-none focus:border-moriah-gold text-sm" />
+                                                    <input type="text" placeholder="Cidade (preenchida pelo CEP)" readOnly value={customerData.city} className="px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm text-stone-500 cursor-not-allowed" />
+                                                    <input type="text" placeholder="Estado (preenchido pelo CEP)" readOnly value={customerData.state} className="px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl text-sm text-stone-500 cursor-not-allowed" />
+                                                </div>
+                                            )}
+                                            {customerData.postalCode.length > 0 && customerData.postalCode.length < 8 && (
+                                                <p className="text-xs text-moriah-orange mt-2 flex items-center gap-1"><LucideIcon name="info" className="w-3 h-3" /> Digite os 8 dígitos para preencher o endereço automaticamente.</p>
+                                            )}
                                         </div>
 
                                         <div>
