@@ -242,14 +242,19 @@ async function initTables(dbUtil, isMysql) {
     }
 
     // Tabela de usuários do PDV (login compartilhado entre dispositivos)
-    await dbUtil.run(`CREATE TABLE IF NOT EXISTS pdv_users (
-        id INTEGER PRIMARY KEY ${autoInc},
-        name TEXT NOT NULL,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        role TEXT DEFAULT 'operator',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+    // VARCHAR obrigatório no MySQL: TEXT com UNIQUE causa erro "key without key length"
+    try {
+        await dbUtil.run(`CREATE TABLE IF NOT EXISTS pdv_users (
+            id INTEGER PRIMARY KEY ${autoInc},
+            name VARCHAR(255) NOT NULL,
+            username VARCHAR(100) NOT NULL UNIQUE,
+            password_hash VARCHAR(64) NOT NULL,
+            role VARCHAR(50) DEFAULT 'operator',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+    } catch (e) {
+        console.error('[DB] ERRO ao criar pdv_users:', e.message);
+    }
     // Cria admin padrão se não existir nenhum usuário
     const [uRows] = await dbUtil.query('SELECT COUNT(*) as count FROM pdv_users');
     if (uRows[0].count === 0) {
