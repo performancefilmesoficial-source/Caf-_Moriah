@@ -32,8 +32,27 @@
     </script>
 </head>
 
-<body class="bg-moriah-bg text-moriah-black font-sans min-h-screen flex flex-col items-center justify-center p-4">
+<body class="bg-moriah-bg text-moriah-black font-sans min-h-screen flex flex-col">
 
+    <header class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-moriah-sand w-full" style="border-color: #ecdcc2;">
+        <div class="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-3">
+            <a href="index.html" class="flex items-center flex-shrink-0 max-w-[140px] md:max-w-[180px]">
+                <img src="logo.png" alt="Moriah Café Especial" class="h-9 md:h-11 w-auto object-contain max-w-full" />
+            </a>
+            <div class="hidden md:flex gap-8 text-sm font-medium">
+                <a href="index.html#inicio" class="hover:text-moriah-gold transition-colors">Home</a>
+                <a href="index.html#produtos" class="hover:text-moriah-gold transition-colors">Cafés</a>
+                <a href="index.html#acessorios" class="hover:text-moriah-gold transition-colors">Acessórios</a>
+                <a href="index.html#nossahistoria" class="hover:text-moriah-gold transition-colors">Nossa História</a>
+            </div>
+            <a href="index.html" class="flex items-center gap-2 text-sm font-medium hover:text-moriah-gold transition-colors">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                <span class="hidden md:inline">Voltar à Loja</span>
+            </a>
+        </div>
+    </header>
+
+    <main class="flex-1 flex items-center justify-center p-4">
     <div
         class="bg-white max-w-lg w-full rounded-3xl shadow-2xl p-8 md:p-12 text-center relative overflow-hidden border border-stone-100">
 
@@ -69,6 +88,7 @@
 
         </div>
     </div>
+    </main>
 
     <script>
         lucide.createIcons();
