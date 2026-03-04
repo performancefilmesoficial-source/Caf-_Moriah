@@ -516,6 +516,11 @@
             const [grindPickerProduct, setGrindPickerProduct] = useState(null);
             const [dashData, setDashData] = useState(null);
             const [dashLoading, setDashLoading] = useState(false);
+            const [isAsaasModalOpen, setIsAsaasModalOpen] = useState(false);
+            const [currentAsaasCharge, setCurrentAsaasCharge] = useState(null); // { payment_id, invoiceUrl, total, label }
+            const [asaasPolling, setAsaasPolling] = useState(null); // interval ref
+            const [asaasPaid, setAsaasPaid] = useState(false);
+            const [showMachineSubmenu, setShowMachineSubmenu] = useState(false);
             const [siteSettings, setSiteSettings] = useState({
                 hero_title: '', hero_subtitle: '', hero_text: '', hero_video: '',
                 about_title: '', about_subtitle: '', about_text_1: '', about_text_2: '', about_image: ''
@@ -755,6 +760,56 @@
                 }
             };
 
+            const finalizeAsaasCharge = async (billingType) => {
+                const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
+                const total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
+                const label = billingType === 'CREDIT_CARD' ? 'Crédito Asaas' : billingType === 'DEBIT_CARD' ? 'Débito Asaas' : 'Cartão Asaas';
+                setIsCheckoutOpen(false);
+                setAsaasPaid(false);
+                try {
+                    const res = await fetch('/api/pdv/charge', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ customerName: 'Cliente PDV', total, billingType })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) { alert(data.error || 'Erro ao criar cobrança.'); setIsCheckoutOpen(true); return; }
+                    setCurrentAsaasCharge({ payment_id: data.payment_id, invoiceUrl: data.invoiceUrl, total, label });
+                    setIsAsaasModalOpen(true);
+                    // Polling a cada 5s por até 10 minutos
+                    let attempts = 0;
+                    const maxAttempts = 120;
+                    const interval = setInterval(async () => {
+                        attempts++;
+                        if (attempts > maxAttempts) {
+                            clearInterval(interval);
+                            setAsaasPolling(null);
+                            alert('Tempo esgotado. Confirme manualmente se o cliente pagou.');
+                            return;
+                        }
+                        try {
+                            const sr = await fetch(`/api/pdv/payment-status/${data.payment_id}`);
+                            const sd = await sr.json();
+                            if (sd.paid) {
+                                clearInterval(interval);
+                                setAsaasPolling(null);
+                                setAsaasPaid(true);
+                            }
+                        } catch (e) { /* ignora erro de rede no polling */ }
+                    }, 5000);
+                    setAsaasPolling(interval);
+                } catch (err) {
+                    alert('Falha ao conectar com servidor.');
+                    setIsCheckoutOpen(true);
+                }
+            };
+
+            const confirmAsaasPayment = async (label) => {
+                if (asaasPolling) { clearInterval(asaasPolling); setAsaasPolling(null); }
+                setIsAsaasModalOpen(false);
+                await finalizeSale(label || currentAsaasCharge?.label || 'Cartão Asaas');
+            };
+
             const renderView = (overrideView) => {
                 const currentView = overrideView || view;
                 switch (currentView) {
@@ -966,12 +1021,27 @@
                                                     <button onClick={() => finalizeSale('Dinheiro')} class="flex items-center justify-between p-3.5 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
                                                         <div class="flex items-center gap-3"><LucideIcon name="banknote" className="w-5 h-5 text-emerald-600" /><span class="font-bold">Dinheiro</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
                                                     </button>
-                                                    <button onClick={() => finalizeSale('Cartão Débito')} class="flex items-center justify-between p-3.5 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
-                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-5 h-5 text-blue-600" /><span class="font-bold">Cartão Débito</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+                                                    {/* Crédito/Débito QR via Asaas */}
+                                                    <button onClick={() => finalizeAsaasCharge('CREDIT_CARD')} class="flex items-center justify-between p-3.5 bg-moriah-green/5 hover:bg-moriah-green/10 rounded-2xl border border-moriah-green/30 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="qr-code" className="w-5 h-5 text-moriah-green" /><div class="text-left"><span class="font-bold text-moriah-green">Crédito QR</span><p class="text-[10px] text-stone-400">Asaas • cliente paga no celular</p></div></div><LucideIcon name="chevron-right" className="w-5 h-5 text-moriah-green/30 group-hover:text-moriah-green/60" />
                                                     </button>
-                                                    <button onClick={() => finalizeSale('Cartão Crédito')} class="flex items-center justify-between p-3.5 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
-                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-5 h-5 text-purple-600" /><span class="font-bold">Cartão Crédito</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+                                                    <button onClick={() => finalizeAsaasCharge('DEBIT_CARD')} class="flex items-center justify-between p-3.5 bg-moriah-green/5 hover:bg-moriah-green/10 rounded-2xl border border-moriah-green/30 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="qr-code" className="w-5 h-5 text-moriah-green" /><div class="text-left"><span class="font-bold text-moriah-green">Débito QR</span><p class="text-[10px] text-stone-400">Asaas • cliente paga no celular</p></div></div><LucideIcon name="chevron-right" className="w-5 h-5 text-moriah-green/30 group-hover:text-moriah-green/60" />
                                                     </button>
+                                                    {/* Maquininha física (manual) */}
+                                                    <button onClick={() => setShowMachineSubmenu(v => !v)} class="flex items-center justify-between p-3.5 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-5 h-5 text-stone-500" /><div class="text-left"><span class="font-bold">Maquininha</span><p class="text-[10px] text-stone-400">Crédito ou Débito físico</p></div></div><LucideIcon name={showMachineSubmenu ? 'chevron-down' : 'chevron-right'} className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+                                                    </button>
+                                                    {showMachineSubmenu && (
+                                                        <div class="pl-4 space-y-2">
+                                                            <button onClick={() => { setShowMachineSubmenu(false); finalizeSale('Cartão Débito'); }} class="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-blue-50 rounded-xl border border-stone-200 transition-all group">
+                                                                <div class="flex items-center gap-2"><LucideIcon name="credit-card" className="w-4 h-4 text-blue-600" /><span class="font-bold text-sm">Débito Maquininha</span></div><LucideIcon name="chevron-right" className="w-4 h-4 text-stone-300" />
+                                                            </button>
+                                                            <button onClick={() => { setShowMachineSubmenu(false); finalizeSale('Cartão Crédito'); }} class="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-purple-50 rounded-xl border border-stone-200 transition-all group">
+                                                                <div class="flex items-center gap-2"><LucideIcon name="credit-card" className="w-4 h-4 text-purple-600" /><span class="font-bold text-sm">Crédito Maquininha</span></div><LucideIcon name="chevron-right" className="w-4 h-4 text-stone-300" />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                     <button onClick={() => finalizeSale('PIX')} class="flex items-center justify-between p-3.5 bg-teal-50 hover:bg-teal-100 rounded-2xl border border-teal-200 transition-all group">
                                                         <div class="flex items-center gap-3"><LucideIcon name="qr-code" className="w-5 h-5 text-teal-600" /><span class="font-bold text-teal-800">PIX</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-teal-300 group-hover:text-teal-500" />
                                                     </button>
@@ -1003,6 +1073,30 @@
                                             <div class="text-lg md:text-2xl font-black text-teal-600 mb-1 md:mb-2">R$ {currentPixData.total.toFixed(2)}</div>
                                             <button onClick={() => finalizeSale('PIX')} class="w-full py-2.5 md:py-4 bg-moriah-brown text-white rounded-xl md:rounded-2xl font-black text-sm md:text-lg hover:bg-moriah-dark transition-all shadow-lg active:scale-95">Confirmar Pagamento</button>
                                             <button onClick={() => setIsPixModalOpen(false)} class="w-full py-1.5 md:py-2 text-stone-400 font-bold hover:text-stone-600 text-[10px] md:text-base">Voltar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isAsaasModalOpen && currentAsaasCharge && (
+                                <div class="fixed inset-0 bg-moriah-brown/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 md:p-8 text-stone-900">
+                                    <div class="bg-white w-[90%] md:w-full max-w-xs md:max-w-sm rounded-[24px] md:rounded-[40px] shadow-2xl overflow-y-auto max-h-[90vh] p-4 md:p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                                        <div class="p-2 md:p-3 bg-moriah-green/10 rounded-xl md:rounded-2xl mb-2 md:mb-3"><LucideIcon name="credit-card" className="w-5 h-5 md:w-6 md:h-6 text-moriah-green" /></div>
+                                        <h3 class="text-lg md:text-2xl font-black mb-1 md:mb-2 text-stone-900">{currentAsaasCharge.label} via QR</h3>
+                                        <p class="text-stone-500 text-[10px] md:text-xs mb-3 md:mb-4 px-2">Peça ao cliente para escanear o QR Code e pagar no celular.</p>
+                                        <div class="bg-white p-2 md:p-3 rounded-xl md:rounded-3xl border-2 md:border-4 border-stone-50 mb-3 md:mb-4 shadow-inner flex-shrink-0">
+                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(currentAsaasCharge.invoiceUrl)}`} class="w-28 h-28 md:w-40 md:h-40 object-contain" alt="QR Code Asaas" />
+                                        </div>
+                                        <div class="text-lg md:text-2xl font-black text-moriah-green mb-3 md:mb-4">R$ {currentAsaasCharge.total.toFixed(2)}</div>
+                                        <div class={`w-full py-2 rounded-lg text-xs font-bold mb-3 ${asaasPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                            {asaasPaid ? '✓ Pagamento confirmado!' : '⏳ Aguardando pagamento...'}
+                                        </div>
+                                        <div class="w-full space-y-2 md:space-y-3">
+                                            <a href={currentAsaasCharge.invoiceUrl} target="_blank" class="w-full py-2 border border-moriah-green text-moriah-green rounded-xl font-bold text-xs md:text-sm hover:bg-moriah-green/5 transition-all flex justify-center items-center gap-2">
+                                                <LucideIcon name="external-link" className="w-3 h-3" /> Abrir link de pagamento
+                                            </a>
+                                            <button onClick={() => confirmAsaasPayment(currentAsaasCharge.label)} class="w-full py-2.5 md:py-4 bg-moriah-brown text-white rounded-xl md:rounded-2xl font-black text-sm md:text-lg hover:bg-moriah-dark transition-all shadow-lg active:scale-95">Confirmar Pagamento Manualmente</button>
+                                            <button onClick={() => { if (asaasPolling) clearInterval(asaasPolling); setAsaasPolling(null); setIsAsaasModalOpen(false); setCurrentAsaasCharge(null); setAsaasPaid(false); }} class="w-full py-1.5 md:py-2 text-stone-400 font-bold hover:text-stone-600 text-[10px] md:text-base">Cancelar</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1627,6 +1721,53 @@
             };
 
             if (!currentUser) return renderView('login');
+
+            // Primeiro login: força troca de senha
+            if (currentUser.must_change_password) {
+                const handleFirstPassword = async (e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.target);
+                    const nova = fd.get('nova');
+                    const conf = fd.get('confirma');
+                    if (nova !== conf) { alert('As senhas não coincidem.'); return; }
+                    if (nova.length < 4) { alert('A senha deve ter ao menos 4 caracteres.'); return; }
+                    const res = await fetch(`/api/users/${currentUser.id}/first-password`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: nova })
+                    });
+                    if (res.ok) {
+                        const updated = { ...currentUser, must_change_password: 0 };
+                        setCurrentUser(updated);
+                    } else {
+                        const d = await res.json();
+                        alert(d.error || 'Erro ao alterar senha.');
+                    }
+                };
+                return (
+                    <div class="fixed inset-0 bg-stone-50 flex items-center justify-center p-4">
+                        <div class="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden p-10 flex flex-col items-center">
+                            <img src={logoUrl} class="h-14 w-auto mb-8" />
+                            <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4 text-amber-600"><LucideIcon name="lock" className="w-8 h-8" /></div>
+                            <h2 class="text-2xl font-black text-stone-900 mb-1">Bem-vindo, {currentUser.name}!</h2>
+                            <p class="text-stone-400 text-sm mb-8 text-center">Por segurança, defina uma senha pessoal antes de continuar.</p>
+                            <form class="w-full space-y-4" onSubmit={handleFirstPassword}>
+                                <div>
+                                    <label class="text-[10px] uppercase font-bold text-stone-400 ml-4 mb-1 block">Nova Senha</label>
+                                    <input name="nova" type="password" required minLength="4" class="w-full px-6 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" placeholder="Mínimo 4 caracteres" />
+                                </div>
+                                <div>
+                                    <label class="text-[10px] uppercase font-bold text-stone-400 ml-4 mb-1 block">Confirmar Senha</label>
+                                    <input name="confirma" type="password" required minLength="4" class="w-full px-6 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" placeholder="Repita a senha" />
+                                </div>
+                                <button type="submit" class="w-full py-5 bg-moriah-brown text-white rounded-2xl font-black text-xl hover:bg-moriah-dark transition-all shadow-xl shadow-stone-200 mt-4 flex items-center justify-center gap-3">
+                                    <LucideIcon name="check-circle" className="w-6 h-6" />Definir Senha e Entrar
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
 
             const MobileNavItem = ({ icon, label, active, onClick }) => (
                 <button onClick={onClick} class={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${active ? 'text-white' : 'text-stone-400/80 hover:text-stone-300'}`}>

@@ -251,16 +251,19 @@ async function initTables(dbUtil, isMysql) {
             username VARCHAR(100) NOT NULL UNIQUE,
             password_hash VARCHAR(64) NOT NULL,
             role VARCHAR(50) DEFAULT 'operator',
+            must_change_password INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
     } catch (e) {
         console.error('[DB] ERRO ao criar pdv_users:', e.message);
     }
+    // Migration: adiciona must_change_password em bancos existentes
+    try { await dbUtil.run('ALTER TABLE pdv_users ADD COLUMN must_change_password INTEGER DEFAULT 0'); } catch (e) { }
     // Cria admin padrão se não existir nenhum usuário
     const [uRows] = await dbUtil.query('SELECT COUNT(*) as count FROM pdv_users');
     if (uRows[0].count === 0) {
-        await dbUtil.run('INSERT INTO pdv_users (name, username, password_hash, role) VALUES (?, ?, ?, ?)',
-            ['Administrador', 'admin', hashPwd('root'), 'admin']);
+        await dbUtil.run('INSERT INTO pdv_users (name, username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, ?)',
+            ['Administrador', 'admin', hashPwd('root'), 'admin', 0]);
         console.log('[DB] Usuário padrão criado: admin / root');
     }
     console.log('[DB] Tabela pdv_users: OK');
@@ -292,7 +295,7 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
         }
         const u = rows[0];
-        res.json({ id: u.id, name: u.name, username: u.username, role: u.role });
+        res.json({ id: u.id, name: u.name, username: u.username, role: u.role, must_change_password: u.must_change_password ? 1 : 0 });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -313,8 +316,8 @@ app.post('/api/users', async (req, res) => {
     const { name, username, password, role } = req.body;
     if (!name || !username || !password) return res.status(400).json({ error: 'Nome, usuário e senha são obrigatórios.' });
     try {
-        await dbUtil.run('INSERT INTO pdv_users (name, username, password_hash, role) VALUES (?, ?, ?, ?)',
-            [name, username, hashPwd(password), role || 'operator']);
+        await dbUtil.run('INSERT INTO pdv_users (name, username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, ?)',
+            [name, username, hashPwd(password), role || 'operator', 1]); // must_change_password = 1 para novos usuários
         res.json({ success: true });
     } catch (err) {
         const isDup = err.message.includes('UNIQUE') || err.message.includes('Duplicate');
@@ -338,6 +341,18 @@ app.put('/api/users/:id/password', async (req, res) => {
     if (!password) return res.status(400).json({ error: 'Nova senha obrigatória.' });
     try {
         await dbUtil.run('UPDATE pdv_users SET password_hash = ? WHERE id = ?', [hashPwd(password), req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Troca de senha no primeiro login (zera must_change_password)
+app.put('/api/users/:id/first-password', async (req, res) => {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'Nova senha obrigatória.' });
+    try {
+        await dbUtil.run('UPDATE pdv_users SET password_hash = ?, must_change_password = 0 WHERE id = ?', [hashPwd(password), req.params.id]);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1217,6 +1232,58 @@ app.get('/api/dashboard', async (req, res) => {
     } catch (err) {
         console.error('[DASHBOARD]', err.message);
         res.status(500).json({ error: err.message });
+    }
+});
+
+// ==== PDV: COBRANÇAS ASAAS (Crédito/Débito via QR) ====
+
+// Cria cobrança Asaas para pagamento presencial via QR Code
+app.post('/api/pdv/charge', async (req, res) => {
+    if (!ASAAS_API_KEY) return res.status(400).json({ error: 'Asaas não configurado. Configure ASAAS_API_KEY nas variáveis de ambiente.' });
+
+    const { customerName, total, billingType } = req.body;
+    if (!total || total <= 0) return res.status(400).json({ error: 'Valor inválido.' });
+
+    try {
+        // Cria cliente genérico PDV no Asaas
+        const custRes = await axios.post(`${ASAAS_URL}/customers`, {
+            name: customerName || 'Cliente PDV Moriah',
+            externalReference: `PDV-${Date.now()}`
+        }, { headers: { 'access_token': ASAAS_API_KEY, 'Content-Type': 'application/json' } });
+
+        const customerId = custRes.data.id;
+        const dueDate = new Date().toISOString().split('T')[0];
+
+        // Cria cobrança — billingType UNDEFINED deixa cliente escolher crédito/débito na página Asaas
+        const payRes = await axios.post(`${ASAAS_URL}/payments`, {
+            customer: customerId,
+            billingType: billingType || 'UNDEFINED',
+            dueDate,
+            value: parseFloat(total),
+            description: 'PDV Moriah Café',
+            externalReference: `PDV-${Date.now()}`
+        }, { headers: { 'access_token': ASAAS_API_KEY, 'Content-Type': 'application/json' } });
+
+        const payment = payRes.data;
+        res.json({ payment_id: payment.id, invoiceUrl: payment.invoiceUrl, status: payment.status });
+    } catch (err) {
+        console.error('[PDV CHARGE]', err.response?.data || err.message);
+        res.status(500).json({ error: err.response?.data?.errors?.[0]?.description || 'Erro ao criar cobrança Asaas.' });
+    }
+});
+
+// Consulta status de cobrança Asaas (usado pelo polling do PDV)
+app.get('/api/pdv/payment-status/:payment_id', async (req, res) => {
+    if (!ASAAS_API_KEY) return res.status(400).json({ error: 'Asaas não configurado.' });
+    try {
+        const r = await axios.get(`${ASAAS_URL}/payments/${req.params.payment_id}`, {
+            headers: { 'access_token': ASAAS_API_KEY }
+        });
+        const p = r.data;
+        const paid = ['CONFIRMED', 'RECEIVED'].includes(p.status);
+        res.json({ payment_id: p.id, status: p.status, paid, billingType: p.billingType, value: p.value });
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao consultar pagamento.' });
     }
 });
 
