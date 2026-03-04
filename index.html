@@ -59,6 +59,18 @@
             cursor: pointer;
         }
 
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+
+        .pt-safe {
+            padding-top: env(safe-area-inset-top, 0);
+        }
+
+        .pb-32 {
+            padding-bottom: 8rem;
+        }
+
         /* Garante que nenhum elemento estoure a largura da tela */
         *,
         *::before,
@@ -130,7 +142,7 @@
 </head>
 
 <body class="bg-stone-50 text-stone-900">
-    <div id="root" class="flex items-center justify-center h-screen bg-stone-50">
+    <div id="root" class="flex items-center justify-center h-screen bg-stone-50 w-full">
         <div class="text-center">
             <div
                 class="w-12 h-12 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin mx-auto mb-4">
@@ -641,7 +653,7 @@
 
             const finalizeSale = async (method) => {
                 const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
-                const total = subtotal * (1 - (discount / 100));
+                const total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
 
                 if (method === 'PIX' && !isPixModalOpen) {
                     const payload = generatePixPayload(total);
@@ -875,7 +887,7 @@
                                                 </div>
                                                 <div class="flex justify-between items-center mt-1 w-full">
                                                     <span class="text-moriah-brown font-bold text-base">R$ {parseFloat(p.price).toFixed(2)}</span>
-                                                    <span class={`text-[10px] px-2 py-0.5 rounded-full ${p.stock < p.minStock ? 'bg-red-100 text-red-600' : 'bg-stone-100 text-stone-500'}`}>Estoque: {p.stock}</span>
+                                                    <span class={`text-[11px] px-2.5 py-1 rounded-full font-black ${p.stock < p.minStock ? 'bg-red-500 text-white ring-4 ring-red-500/10' : 'bg-emerald-50 text-emerald-700 ring-4 ring-emerald-500/10'}`}>Estoque: {p.stock} {p.stock <= 0 ? '(ESGOTADO)' : ''}</span>
                                                 </div>
                                             </div>
                                         );
@@ -1098,7 +1110,7 @@
                                         <div key={p.id} class="flex items-center gap-3 px-4 py-3">
                                             <div class="flex-1 min-w-0">
                                                 <p class="font-bold text-sm text-stone-900 truncate">{p.name}</p>
-                                                <p class="text-xs text-stone-400">{p.category} · <span class={`font-semibold ${p.stock < p.minStock ? 'text-red-500' : 'text-stone-500'}`}>{p.stock} un.</span></p>
+                                                <p class="text-xs text-stone-400">{p.category} · <span class={`font-black px-1.5 py-0.5 rounded text-[10px] ${p.stock < p.minStock ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>Estoque: {p.stock}</span></p>
                                                 <p class="text-sm font-bold text-moriah-brown">R$ {parseFloat(p.price).toFixed(2)}</p>
                                             </div>
                                             <div class="flex gap-1 shrink-0">
@@ -1623,7 +1635,7 @@
             );
 
             return (
-                <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-stone-50">
+                <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-stone-50 w-full">
                     <aside class="hidden md:flex w-72 bg-white border-r border-stone-100 flex-col p-6 space-y-8 no-print">
                         <div class="flex flex-col items-center mb-4"><div class="w-full flex items-center justify-center p-4"><img src={logoUrl} class="w-3/4 h-auto max-h-32 object-contain" /></div></div>
                         <nav class="flex-1 space-y-2">
@@ -1649,15 +1661,15 @@
                             </div>
                         </div>
                     </aside>
-                    <header class="md:hidden sticky top-0 z-40 bg-white border-b border-stone-100 px-4 py-3 flex items-center justify-between no-print">
+                    <header class="md:hidden sticky top-0 z-40 bg-white border-b border-stone-100 px-4 py-3 flex items-center justify-between no-print w-full">
                         <img src={logoUrl} class="h-8 w-auto" />
                         <div class="flex items-center gap-3">
                             <div class="text-right"><p class="text-[8px] font-bold text-stone-400 uppercase leading-none">Vendedor</p><p class="text-xs font-black text-stone-900 leading-none mt-0.5">{currentUser.username}</p></div>
                             <button onClick={() => setCurrentUser(null)} class="p-2 bg-stone-50 rounded-lg text-moriah-brown p-2"><LucideIcon name="log-out" className="w-4 h-4" /></button>
                         </div>
                     </header>
-                    <main class="flex-1 p-4 md:p-8 overflow-y-auto pb-24 md:pb-8">{renderView()}</main>
-                    <nav class="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-moriah-black border-t border-white/5 flex items-center px-1 no-print z-50 shadow-[0_-8px_30px_rgb(0,0,0,0.25)]">
+                    <main class="flex-1 p-4 md:p-8 overflow-y-auto pb-32 md:pb-8">{renderView()}</main>
+                    <nav class="md:hidden fixed bottom-0 left-0 right-0 w-full h-[72px] bg-moriah-black border-t border-white/5 flex items-center px-0 no-print z-60 shadow-[0_-8px_30px_rgb(0,0,0,0.4)] pb-safe">
                         <MobileNavItem onClick={() => setView('dashboard')} active={view === 'dashboard'} icon="layout-dashboard" label="Painel" />
                         <MobileNavItem onClick={() => setView('pos')} active={view === 'pos'} icon="shopping-bag" label="Venda" />
                         <MobileNavItem onClick={() => setView('inventory')} active={view === 'inventory'} icon="package" label="Estoque" />
