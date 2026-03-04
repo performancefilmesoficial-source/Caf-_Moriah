@@ -580,8 +580,8 @@ app.post('/api/sales', async (req, res) => {
     try {
         // Salva a venda principal
         const result = await dbUtil.run(
-            'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id) VALUES (?, ?, ?, ?, ?, ?)',
-            [total, method, origin || 'Físico', 'Concluído', customer_phone, null]
+            'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [total, method, origin || 'Físico', 'Concluído', customer_phone, null, seller || null]
         );
         const saleId = result[0].insertId;
 
@@ -814,11 +814,12 @@ app.post('/api/checkout', async (req, res) => {
         // 4. Salvar venda no Banco de Dados ANTES de responder ao cliente
         // (se salvar depois e o banco falhar, o cliente pagou mas a venda não existe no PDV)
         try {
+            const finalTotalDb = parseFloat(totalAmount.toFixed(2));
             await dbUtil.run(process.env.DATABASE_URL ? 'START TRANSACTION' : 'BEGIN TRANSACTION');
             const statusInicial = billingType === 'CREDIT_CARD' ? 'Pago' : 'Pendente';
             const result = await dbUtil.run(
                 'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, customer_street, customer_neighborhood, customer_city, customer_state, customer_complement, shipping_cost, shipping_service, shipping_service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', customerStreet || '', customerNeighborhood || '', customerCity || '', customerState || '', customerComplement || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS', shippingServiceId]
+                [finalTotalDb, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', customerStreet || '', customerNeighborhood || '', customerCity || '', customerState || '', customerComplement || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS', shippingServiceId]
             );
             const saleId = result[0].insertId;
             for (const item of cartItems) {

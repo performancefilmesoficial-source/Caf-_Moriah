@@ -673,7 +673,7 @@
                             discount,
                             total,
                             method,
-                            origin: 'Fisico'
+                            origin: 'Físico'
                         })
                     });
 
@@ -1098,7 +1098,7 @@
                                             }
                                         }} />
                                     </label>
-                                    <button onClick={() => { setView('add_product'); }} class="flex items-center gap-1.5 bg-moriah-teal text-white px-4 py-2 rounded-xl hover:bg-teal-900 transition-all shadow-md text-sm font-bold">
+                                    <button onClick={() => { setView('add_product'); }} class="flex items-center gap-1.5 bg-moriah-green text-white px-4 py-2 rounded-xl hover:bg-emerald-900 transition-all shadow-md text-sm font-bold">
                                         <LucideIcon name="plus" className="w-4 h-4" />Novo Produto
                                     </button>
                                 </div>
@@ -1139,7 +1139,7 @@
                                                     <td class="px-6 py-4"><span class={`font-bold ${p.stock < p.minStock ? 'text-red-500' : 'text-stone-700'}`}>{p.stock}</span></td>
                                                     <td class="px-6 py-4 text-stone-500 hidden md:table-cell">R$ {p.cost.toFixed(2)}</td>
                                                     <td class="px-6 py-4 font-bold text-moriah-brown whitespace-nowrap">R$ {p.price.toFixed(2)}</td>
-                                                    <td class="px-6 py-4 hidden lg:table-cell whitespace-nowrap"><span class="text-emerald-600 font-medium">R$ {(p.price - p.cost).toFixed(2)}</span><span class="text-[10px] text-emerald-500 ml-1">({(((p.price - p.cost) / p.cost) * 100).toFixed(0)}%)</span></td>
+                                                    <td class="px-6 py-4 hidden lg:table-cell whitespace-nowrap"><span class="text-emerald-600 font-medium">R$ {(p.price - p.cost).toFixed(2)}</span><span class="text-[10px] text-emerald-500 ml-1">{p.cost > 0 ? `(${(((p.price - p.cost) / p.cost) * 100).toFixed(0)}%)` : ''}</span></td>
                                                     <td class="px-6 py-4 text-right">
                                                         <div class="flex justify-end gap-2">
                                                             <button onClick={() => { setEditingProduct(p); setView('edit_product'); }} class="p-2 text-stone-400 hover:text-moriah-brown transition-colors hover:bg-stone-100 rounded-lg" title="Editar"><LucideIcon name="pencil" className="w-4 h-4" /></button>
@@ -1166,11 +1166,12 @@
                             else if (periodFilter === 'week') { const diff = now - saleDate; dateMatch = diff <= 7 * 24 * 60 * 60 * 1000; }
                             else if (periodFilter === 'month') dateMatch = saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
 
-                            // Filtro de Origem
+                            // Filtro de Origem — normaliza com/sem acento em Fisico/Físico
                             let originMatch = true;
                             const saleOrigin = s.origin || 'Físico';
-                            if (originFilter === 'fisico') originMatch = saleOrigin === 'Físico';
-                            else if (originFilter === 'online') originMatch = saleOrigin === 'Online';
+                            const isOnline = saleOrigin === 'Online';
+                            if (originFilter === 'fisico') originMatch = !isOnline;
+                            else if (originFilter === 'online') originMatch = isOnline;
 
                             return dateMatch && originMatch;
                         });
@@ -1219,7 +1220,7 @@
                                                         <p class="font-black text-moriah-brown text-base shrink-0">R$ {parseFloat(s.total).toFixed(2)}</p>
                                                     </div>
                                                     <div class="flex items-center gap-2 flex-wrap">
-                                                        <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full ${(!s.origin || s.origin === 'Físico') ? 'bg-stone-100 text-stone-600' : 'bg-emerald-100 text-emerald-700'}`}>{s.origin || 'Físico'}</span>
+                                                        <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.origin === 'Online' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>{s.origin === 'Online' ? 'Online' : 'Físico'}</span>
                                                         <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColor}`}>{s.tracking_code ? 'Enviado' : (s.status || 'Concluído')}</span>
                                                         {!s.tracking_code && s.origin === 'Online' && s.shipping_service && s.customer_cep && s.shipping_service !== 'RETIRADA' && !['Expressa Moriah ☕', 'Entrega Padrão Feira'].includes(s.shipping_service) && (
                                                             <button onClick={() => generateLabel(s.id)} class="text-[10px] bg-moriah-brown px-3 py-1 rounded-lg text-white font-bold">Gerar Etiqueta</button>
@@ -1250,8 +1251,8 @@
                                                             <p class="font-bold">{s.customer_name || s.seller || 'PDV'}</p><p class="text-xs text-stone-400">{new Date(s.created_at || s.date).toLocaleString('pt-BR')}</p>
                                                         </td>
                                                         <td class="px-6 py-4">
-                                                            <span class={`flex items-center gap-1 w-max px-2 py-1 rounded-md text-[10px] font-bold uppercase ${(!s.origin || s.origin === 'Físico') ? 'bg-stone-100 text-stone-600' : 'bg-emerald-100 text-emerald-700'}`}>
-                                                                <LucideIcon name={(!s.origin || s.origin === 'Físico') ? 'store' : 'globe'} className="w-3 h-3" /> {s.origin || 'Físico'}
+                                                            <span class={`flex items-center gap-1 w-max px-2 py-1 rounded-md text-[10px] font-bold uppercase ${s.origin === 'Online' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>
+                                                                <LucideIcon name={s.origin === 'Online' ? 'globe' : 'store'} className="w-3 h-3" /> {s.origin === 'Online' ? 'Online' : 'Físico'}
                                                             </span>
                                                         </td>
                                                         <td class="px-6 py-4">
