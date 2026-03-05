@@ -159,7 +159,7 @@
             const token = localStorage.getItem('moriah_jwt');
             const headers = { ...options.headers };
             if (token) {
-                headers['Authorization'] = \`Bearer \${token}\`;
+                headers['Authorization'] = `Bearer ${token}`;
             }
             const res = await window.fetch(url, { ...options, headers });
             if ((res.status === 401 || res.status === 403) && !url.includes('/api/auth/login')) {
@@ -331,7 +331,7 @@
                             try {
                                 let res;
                                 if (isEdit) {
-                                    res = await apiFetch('/api/products/${editingProduct.id}`, {
+                                    res = await apiFetch(`/api/products/${editingProduct.id}`, {
                                         method: 'PUT',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify(productData)
@@ -740,7 +740,7 @@
             const deleteProduct = async (id) => {
                 if (confirm('Tem certeza que deseja excluir este produto?')) {
                     try {
-                        const res = await apiFetch('/api/products/${id}`, { method: 'DELETE' });
+                        const res = await apiFetch(`/api/products/${id}`, { method: 'DELETE' });
                         if (res.ok) {
                             setProducts(curr => curr.filter(p => p.id !== id));
                         }
@@ -806,7 +806,7 @@
                             return;
                         }
                         try {
-                            const sr = await apiFetch('/api/pdv/payment-status/${data.payment_id}`);
+                            const sr = await apiFetch(`/api/pdv/payment-status/${data.payment_id}`);
                             const sd = await sr.json();
                             if (sd.paid) {
                                 clearInterval(interval);
@@ -1635,7 +1635,7 @@ setCurrentUser(data);
                                                 const nova = fd.get('nova');
                                                 const conf = fd.get('confirma');
                                                 if (nova !== conf) { alert('As senhas não coincidem.'); return; }
-                                                const res = await apiFetch('/api/users/${currentUser.id}/password`, {
+                                                const res = await apiFetch(`/api/users/${currentUser.id}/password`, {
                                                     method: 'PUT',
                                                     headers: { 'Content-Type': 'application/json' },
                                                     body: JSON.stringify({ password: nova })
@@ -1671,7 +1671,7 @@ setCurrentUser(data);
                                                                 ? <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">VOCÊ</span>
                                                                 : <button onClick={async () => {
                                                                     if (!confirm(`Remover acesso de "${u.name}"?`)) return;
-                                                                    await apiFetch('/api/users/${u.id}`, { method: 'DELETE' });
+                                                                    await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' });
                                                                     reloadUsers();
                                                                 }} class="p-2 text-stone-300 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"><LucideIcon name="user-minus" className="w-4 h-4" /></button>
                                                             }
@@ -1750,7 +1750,7 @@ setCurrentUser(data);
                     const conf = fd.get('confirma');
                     if (nova !== conf) { alert('As senhas não coincidem.'); return; }
                     if (nova.length < 4) { alert('A senha deve ter ao menos 4 caracteres.'); return; }
-                    const res = await apiFetch('/api/users/${currentUser.id}/first-password`, {
+                    const res = await apiFetch(`/api/users/${currentUser.id}/first-password`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ password: nova })
