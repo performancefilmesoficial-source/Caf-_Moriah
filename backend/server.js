@@ -5,11 +5,25 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const axios = require('axios');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
-// Hash de senha com salt fixo (SHA-256) — sem dependências externas
-function hashPwd(password) {
-    return crypto.createHash('sha256').update(password + 'moriah_pdv_2024').digest('hex');
+const JWT_SECRET = process.env.JWT_SECRET || 'moriah_segredo_pdv_2026';
+
+// Hash de senha com Bcrypt
+async function hashPwd(password) {
+    return await bcrypt.hash(password, 10);
+}
+
+// Verifica senha (suporta senhas antigas em SHA-256 e novas em Bcrypt)
+async function verifyPwd(password, hash) {
+    if (hash.length === 64 && !hash.startsWith('$')) {
+        const preHash = crypto.createHash('sha256').update(password + 'moriah_pdv_2024').digest('hex');
+        return preHash === hash;
+    }
+    return await bcrypt.compare(password, hash);
 }
 
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
@@ -24,10 +38,39 @@ const upload = multer({
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Rate Limits
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutos
+    max: 10, // 10 tentativas por IP
+    message: { error: 'Muitas tentativas de login, tente novamente após 15 minutos.' }
+});
+
+const checkoutLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minuto
+    max: 5, // 5 tentativas por IP
+    message: { error: 'Muitas requisições. Aguarde um minuto.' }
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Middleware de Autenticação JWT (PDV)
+function authenticateJWT(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+        const token = authHeader.split(' ')[1];
+        jwt.verify(token, JWT_SECRET, (err, user) => {
+            if (err) return res.status(403).json({ error: 'Sessão expirada ou token inválido.' });
+            req.user = user;
+            next();
+        });
+    } else {
+        res.status(401).json({ error: 'Acesso negado. Token não fornecido.' });
+    }
+}
+
 // Mantém compatibilidade com imagens antigas salvas em /uploads
 app.use('/uploads', express.static('uploads'));
 
@@ -111,6 +154,30 @@ async function setupDatabase() {
                 const [result] = await pool.execute(sql, cleaned);
                 return [{ insertId: result.insertId, changes: result.affectedRows }];
             },
+            transaction: async (callback) => {
+                const conn = await dbUtil.pool.getConnection();
+                await conn.beginTransaction();
+                try {
+                    const txUtil = {
+                        run: async (sql, params) => {
+                            const [result] = await conn.execute(sql, dbUtil._clean(params));
+                            return [{ insertId: result.insertId, changes: result.affectedRows }];
+                        },
+                        query: async (sql, params) => {
+                            const [rows] = await conn.query(sql, dbUtil._clean(params));
+                            return [rows];
+                        }
+                    };
+                    const result = await callback(txUtil);
+                    await conn.commit();
+                    return result;
+                } catch (err) {
+                    await conn.rollback();
+                    throw err;
+                } finally {
+                    conn.release();
+                }
+            },
             pool: pool
         };
 
@@ -134,6 +201,17 @@ async function setupDatabase() {
                     else resolve([{ insertId: this.lastID, changes: this.changes }]);
                 });
             }),
+            transaction: async (callback) => {
+                await dbUtil.run('BEGIN TRANSACTION');
+                try {
+                    const result = await callback(dbUtil);
+                    await dbUtil.run('COMMIT');
+                    return result;
+                } catch (err) {
+                    await dbUtil.run('ROLLBACK');
+                    throw err;
+                }
+            },
             db: sqliteDb
         };
 
@@ -262,8 +340,9 @@ async function initTables(dbUtil, isMysql) {
     // Cria admin padrão se não existir nenhum usuário
     const [uRows] = await dbUtil.query('SELECT COUNT(*) as count FROM pdv_users');
     if (uRows[0].count === 0) {
+        const initialHash = await hashPwd('root');
         await dbUtil.run('INSERT INTO pdv_users (name, username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, ?)',
-            ['Administrador', 'admin', hashPwd('root'), 'admin', 0]);
+            ['Administrador', 'admin', initialHash, 'admin', 0]);
         console.log('[DB] Usuário padrão criado: admin / root');
     }
     console.log('[DB] Tabela pdv_users: OK');
@@ -285,24 +364,32 @@ app.get('/api/health', (req, res) => {
 
 // ==== AUTH / USUÁRIOS PDV ====
 
-// Login — valida credenciais e retorna dados do usuário (sem senha)
-app.post('/api/auth/login', async (req, res) => {
+// Login — valida credenciais e retorna dados do usuário e JWT
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Usuário e senha obrigatórios.' });
     try {
         const [rows] = await dbUtil.query('SELECT * FROM pdv_users WHERE username = ?', [username]);
-        if (!rows.length || rows[0].password_hash !== hashPwd(password)) {
+        if (!rows.length) {
             return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
         }
         const u = rows[0];
-        res.json({ id: u.id, name: u.name, username: u.username, role: u.role, must_change_password: u.must_change_password ? 1 : 0 });
+        const isValid = await verifyPwd(password, u.password_hash);
+        if (!isValid) {
+            return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+        }
+
+        // Gera JWT
+        const token = jwt.sign({ id: u.id, username: u.username, role: u.role }, JWT_SECRET, { expiresIn: '12h' });
+
+        res.json({ id: u.id, name: u.name, username: u.username, role: u.role, must_change_password: u.must_change_password ? 1 : 0, token });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
 // Listar usuários (sem senha)
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', authenticateJWT, async (req, res) => {
     try {
         const [rows] = await dbUtil.query('SELECT id, name, username, role, created_at FROM pdv_users ORDER BY id');
         res.json(rows);
@@ -312,12 +399,13 @@ app.get('/api/users', async (req, res) => {
 });
 
 // Criar usuário
-app.post('/api/users', async (req, res) => {
+app.post('/api/users', authenticateJWT, async (req, res) => {
     const { name, username, password, role } = req.body;
     if (!name || !username || !password) return res.status(400).json({ error: 'Nome, usuário e senha são obrigatórios.' });
     try {
+        const newHash = await hashPwd(password);
         await dbUtil.run('INSERT INTO pdv_users (name, username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, ?)',
-            [name, username, hashPwd(password), role || 'operator', 1]); // must_change_password = 1 para novos usuários
+            [name, username, newHash, role || 'operator', 1]); // must_change_password = 1 para novos usuários
         res.json({ success: true });
     } catch (err) {
         const isDup = err.message.includes('UNIQUE') || err.message.includes('Duplicate');
@@ -326,7 +414,7 @@ app.post('/api/users', async (req, res) => {
 });
 
 // Excluir usuário
-app.delete('/api/users/:id', async (req, res) => {
+app.delete('/api/users/:id', authenticateJWT, async (req, res) => {
     try {
         await dbUtil.run('DELETE FROM pdv_users WHERE id = ?', [req.params.id]);
         res.json({ success: true });
@@ -335,24 +423,24 @@ app.delete('/api/users/:id', async (req, res) => {
     }
 });
 
-// Alterar senha
-app.put('/api/users/:id/password', async (req, res) => {
+app.put('/api/users/:id/password', authenticateJWT, async (req, res) => {
     const { password } = req.body;
     if (!password) return res.status(400).json({ error: 'Nova senha obrigatória.' });
     try {
-        await dbUtil.run('UPDATE pdv_users SET password_hash = ? WHERE id = ?', [hashPwd(password), req.params.id]);
+        const resetHash = await hashPwd(password);
+        await dbUtil.run('UPDATE pdv_users SET password_hash = ? WHERE id = ?', [resetHash, req.params.id]);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// Troca de senha no primeiro login (zera must_change_password)
-app.put('/api/users/:id/first-password', async (req, res) => {
+app.put('/api/users/:id/first-password', authenticateJWT, async (req, res) => {
     const { password } = req.body;
     if (!password) return res.status(400).json({ error: 'Nova senha obrigatória.' });
     try {
-        await dbUtil.run('UPDATE pdv_users SET password_hash = ?, must_change_password = 0 WHERE id = ?', [hashPwd(password), req.params.id]);
+        const firstHash = await hashPwd(password);
+        await dbUtil.run('UPDATE pdv_users SET password_hash = ?, must_change_password = 0 WHERE id = ?', [firstHash, req.params.id]);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -362,7 +450,7 @@ app.put('/api/users/:id/first-password', async (req, res) => {
 // ---- PRODUTOS ----
 
 // 1. Listar todos os produtos (Painel Admin PDV)
-app.get('/api/products', async (req, res) => {
+app.get('/api/products', authenticateJWT, async (req, res) => {
     try {
         const [rows] = await dbUtil.query('SELECT * FROM products ORDER BY name ASC');
         res.json(rows);
@@ -384,7 +472,7 @@ app.get('/api/products/online', async (req, res) => {
 });
 
 // 2. Adicionar um novo produto
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', authenticateJWT, async (req, res) => {
     const { name, category, cost, price, price_moido, stock, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
     try {
         const result = await dbUtil.run(
@@ -412,7 +500,7 @@ app.post('/api/products', async (req, res) => {
 });
 
 // 3. Atualizar um produto
-app.put('/api/products/:id', async (req, res) => {
+app.put('/api/products/:id', authenticateJWT, async (req, res) => {
     const { id } = req.params;
     const { name, category, cost, price, price_moido, stock, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
     try {
@@ -435,7 +523,7 @@ app.put('/api/products/:id', async (req, res) => {
 });
 
 // 4. Excluir um produto
-app.delete('/api/products/:id', async (req, res) => {
+app.delete('/api/products/:id', authenticateJWT, async (req, res) => {
     const { id } = req.params;
     try {
         await dbUtil.run('DELETE FROM products WHERE id=?', [id]);
@@ -447,7 +535,7 @@ app.delete('/api/products/:id', async (req, res) => {
 });
 
 // 5. Importar produtos via CSV (Nuvemshop)
-app.post('/api/products/import', upload.single('file'), async (req, res) => {
+app.post('/api/products/import', authenticateJWT, upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
     }
@@ -519,7 +607,7 @@ app.get('/api/site-settings', async (req, res) => {
 });
 
 // 2. Atualizar configurações
-app.put('/api/site-settings', upload.fields([{ name: 'hero_video_file', maxCount: 1 }, { name: 'about_image_file', maxCount: 1 }]), async (req, res) => {
+app.put('/api/site-settings', authenticateJWT, upload.fields([{ name: 'hero_video_file', maxCount: 1 }, { name: 'about_image_file', maxCount: 1 }]), async (req, res) => {
     const { hero_title, hero_subtitle, hero_text, hero_video_opacity, hero_text_align, about_title, about_subtitle, about_text_1, about_text_2, about_image_align } = req.body;
     let { hero_video, about_image } = req.body;
 
@@ -559,7 +647,7 @@ app.put('/api/site-settings', upload.fields([{ name: 'hero_video_file', maxCount
 // ---- VENDAS ----
 
 // 1. Listar vendas
-app.get('/api/sales', async (req, res) => {
+app.get('/api/sales', authenticateJWT, async (req, res) => {
     try {
         const [sales] = await dbUtil.query('SELECT * FROM sales ORDER BY created_at DESC LIMIT 100');
 
@@ -590,29 +678,32 @@ app.get('/api/sales', async (req, res) => {
 });
 
 // 2. Finalizar uma venda
-app.post('/api/sales', async (req, res) => {
+app.post('/api/sales', authenticateJWT, async (req, res) => {
     const { seller, items, subtotal, discount, total, method, origin, customer_phone } = req.body;
     try {
-        // Salva a venda principal
-        const result = await dbUtil.run(
-            'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [total, method, origin || 'Físico', 'Concluído', customer_phone, null, seller || null]
-        );
-        const saleId = result[0].insertId;
+        const saleId = await dbUtil.transaction(async (tx) => {
+            // Salva a venda principal
+            const result = await tx.run(
+                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [total, method, origin || 'Físico', 'Concluído', customer_phone, null, seller || null]
+            );
+            const sId = result[0].insertId;
 
-        // Salva os itens e baixa o estoque
-        for (const item of items) {
-            // Extrai ID numérico (pode vir como "123-grao" ou número simples)
-            const productId = parseInt(String(item.id).split('-')[0]);
-            await dbUtil.run(
-                'INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
-                [saleId, productId, item.name, item.quantity, item.price]
-            );
-            await dbUtil.run(
-                'UPDATE products SET stock = stock - ? WHERE id = ?',
-                [item.quantity, productId]
-            );
-        }
+            // Salva os itens e baixa o estoque
+            for (const item of items) {
+                // Extrai ID numérico (pode vir como "123-grao" ou número simples)
+                const productId = parseInt(String(item.id).split('-')[0]);
+                await tx.run(
+                    'INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                    [sId, productId, item.name, item.quantity, item.price]
+                );
+                await tx.run(
+                    'UPDATE products SET stock = stock - ? WHERE id = ?',
+                    [item.quantity, productId]
+                );
+            }
+            return sId;
+        });
 
         res.status(201).json({ id: saleId, message: 'Venda finalizada com sucesso!' });
     } catch (error) {
@@ -703,7 +794,7 @@ function notifyOwnerNewOrder({ customerName, customerPhone, customerCep, totalAm
     ).catch(err => console.error('[WA META] Erro ao enviar notificação:', err.response?.data || err.message));
 }
 
-app.post('/api/checkout', async (req, res) => {
+app.post('/api/checkout', checkoutLimiter, async (req, res) => {
     const { customerName, customerEmail, customerCpf, customerPhone, customerCep, customerAddressNumber, customerStreet, customerNeighborhood, customerCity, customerState, customerComplement, cartItems, totalAmount, billingType, cardData } = req.body;
     const shippingServiceId = req.body.shippingServiceId || null;
 
@@ -726,16 +817,18 @@ app.post('/api/checkout', async (req, res) => {
         console.log('[CHECKOUT] ASAAS_API_KEY não configurada. Registrando pedido manualmente.');
         try {
             const fakePaymentId = `MANUAL-${Date.now()}`;
-            const result = await dbUtil.run(
-                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, customer_street, customer_neighborhood, customer_city, customer_state, customer_complement, shipping_cost, shipping_service, shipping_service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', 'Aguardando Pagamento', customerPhone, fakePaymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', customerStreet || '', customerNeighborhood || '', customerCity || '', customerState || '', customerComplement || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS', shippingServiceId]
-            );
-            const saleId = result[0].insertId;
-            for (const item of cartItems) {
-                await dbUtil.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
-                    [saleId, item.id, item.name, item.quantity, item.price]);
-                await dbUtil.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
-            }
+            await dbUtil.transaction(async (tx) => {
+                const result = await tx.run(
+                    'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, customer_street, customer_neighborhood, customer_city, customer_state, customer_complement, shipping_cost, shipping_service, shipping_service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [totalAmount, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', 'Aguardando Pagamento', customerPhone, fakePaymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', customerStreet || '', customerNeighborhood || '', customerCity || '', customerState || '', customerComplement || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS', shippingServiceId]
+                );
+                const saleId = result[0].insertId;
+                for (const item of cartItems) {
+                    await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                        [saleId, item.id, item.name, item.quantity, item.price]);
+                    await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+                }
+            });
             // Notificar dono da loja sobre o novo pedido manual
             notifyOwnerNewOrder({ customerName, customerPhone, customerEmail, customerCep: customerCep || '', totalAmount, billingType, shippingService: req.body.shippingService, shippingCost: req.body.shippingCost, cartItems, invoiceUrl: null });
             // PIX simulado para o cliente finalizar
@@ -828,23 +921,23 @@ app.post('/api/checkout', async (req, res) => {
 
         // 4. Salvar venda no Banco de Dados ANTES de responder ao cliente
         // (se salvar depois e o banco falhar, o cliente pagou mas a venda não existe no PDV)
+        // 4. Salvar venda no Banco de Dados ANTES de responder ao cliente
         try {
             const finalTotalDb = parseFloat(totalAmount.toFixed(2));
-            await dbUtil.run(process.env.DATABASE_URL ? 'START TRANSACTION' : 'BEGIN TRANSACTION');
             const statusInicial = billingType === 'CREDIT_CARD' ? 'Pago' : 'Pendente';
-            const result = await dbUtil.run(
-                'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, customer_street, customer_neighborhood, customer_city, customer_state, customer_complement, shipping_cost, shipping_service, shipping_service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [finalTotalDb, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', customerStreet || '', customerNeighborhood || '', customerCity || '', customerState || '', customerComplement || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS', shippingServiceId]
-            );
-            const saleId = result[0].insertId;
-            for (const item of cartItems) {
-                await dbUtil.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
-                    [saleId, item.id, item.name, item.quantity, item.price]);
-                await dbUtil.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
-            }
-            await dbUtil.run('COMMIT');
+            await dbUtil.transaction(async (tx) => {
+                const result = await tx.run(
+                    'INSERT INTO sales (total, method, origin, status, customer_phone, payment_id, customer_name, customer_email, customer_cpf, customer_cep, customer_address_number, customer_street, customer_neighborhood, customer_city, customer_state, customer_complement, shipping_cost, shipping_service, shipping_service_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [finalTotalDb, billingType === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX', 'Online', statusInicial, customerPhone, paymentId, customerName, customerEmail, customerCpf, customerCep, customerAddressNumber || '', customerStreet || '', customerNeighborhood || '', customerCity || '', customerState || '', customerComplement || '', req.body.shippingCost || 0, req.body.shippingService || 'CORREIOS', shippingServiceId]
+                );
+                const saleId = result[0].insertId;
+                for (const item of cartItems) {
+                    await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                        [saleId, item.id, item.name, item.quantity, item.price]);
+                    await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+                }
+            });
         } catch (dbErr) {
-            await dbUtil.run('ROLLBACK').catch(() => { });
             console.error("Erro ao salvar venda no banco após pagamento aprovado:", dbErr);
             // Pagamento foi aprovado mas não salvou — loga para investigação manual
         }
