@@ -163,10 +163,13 @@
             }
             const res = await window.fetch(url, { ...options, headers });
             if ((res.status === 401 || res.status === 403) && !url.includes('/api/auth/login')) {
+                const hadToken = !!token;
                 localStorage.removeItem('moriah_jwt');
                 localStorage.removeItem('moriah_current_user');
-                alert('Sessão expirada ou acesso negado. Faça login novamente.');
-                window.location.reload();
+                if (hadToken) {
+                    alert('Sessão expirada ou acesso negado. Faça login novamente.');
+                    window.location.reload();
+                }
             }
             return res;
         };
@@ -1424,8 +1427,8 @@
                                 });
                                 const data = await res.json();
                                 if (!res.ok) { setLoginError(data.error || 'Erro ao fazer login.'); return; }
-localStorage.setItem('moriah_jwt', data.token);
-setCurrentUser(data);
+                                localStorage.setItem('moriah_jwt', data.token);
+                                setCurrentUser(data);
                             } catch {
                                 setLoginError('Sem conexão com o servidor.');
                             } finally {
