@@ -1380,6 +1380,73 @@ app.get('/api/pdv/payment-status/:payment_id', async (req, res) => {
     }
 });
 
+// ==== PDV: INFINITEPAY (Tap to Pay / Link) ====
+
+// Registra intenção de venda no PDV para InfinitePay
+app.post('/api/pdv/infinitepay/charge', async (req, res) => {
+    const { total, items, discount } = req.body;
+    if (!total || total <= 0) return res.status(400).json({ error: 'Valor inválido.' });
+
+    try {
+        // Validar estoque
+        for (const item of items) {
+            const [rows] = await dbUtil.query('SELECT stock, name FROM products WHERE id = ?', [item.id]);
+            if (!rows.length || rows[0].stock < item.quantity) {
+                return res.status(400).json({ error: `Estoque insuficiente para: ${rows[0]?.name || 'Produto ID ' + item.id}` });
+            }
+        }
+
+        // Registrar venda no banco (Aguardando Pagamento)
+        const result = await dbUtil.transaction(async (tx) => {
+            const resSale = await tx.run(
+                'INSERT INTO sales (total, method, origin, status, customer_name) VALUES (?, ?, ?, ?, ?)',
+                [parseFloat(total), 'InfinitePay', 'Físico', 'Aguardando Pagamento', 'Cliente PDV']
+            );
+            const saleId = resSale[0].insertId;
+
+            for (const item of items) {
+                await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                    [saleId, item.id, item.name, item.quantity, item.price]);
+                await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+            }
+            return saleId;
+        });
+
+        // Retornar ID para o frontend construir o Deep Link
+        res.json({ success: true, sale_id: result });
+    } catch (err) {
+        console.error('[INFINITEPAY PDV]', err.message);
+        res.status(500).json({ error: 'Erro ao registrar venda InfinitePay.' });
+    }
+});
+
+// Webhook InfinitePay (Mock por ora, para quando o usuário configurar reais)
+app.post('/api/webhooks/infinitepay', async (req, res) => {
+    try {
+        // Lógica de validação da InfinitePay aqui
+        const { order_id, status } = req.body;
+        if (status === 'PAID') {
+            await dbUtil.run('UPDATE sales SET status = ? WHERE id = ?', ['Pago', order_id]);
+            console.log(`[WEBHOOK INFINITEPAY] Venda #${order_id} marcada como Pago.`);
+        }
+        res.json({ received: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Confirma pagamento de uma venda existente (pos-callback)
+app.put('/api/pdv/sales/:id/confirm', async (req, res) => {
+    const { id } = req.params;
+    const { method } = req.body;
+    try {
+        await dbUtil.run('UPDATE sales SET status = ?, method = ? WHERE id = ?', ['Pago', method || 'InfinitePay', id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao confirmar venda.' });
+    }
+});
+
 const path = require('path');
 const pdvStatic = express.static(path.join(__dirname, '../'));
 const ecommerceStatic = express.static(path.join(__dirname, '../frontend_ecommerce'));
