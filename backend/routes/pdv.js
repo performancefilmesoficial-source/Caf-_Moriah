@@ -7,6 +7,8 @@ const { broadcastStockUpdate } = require('../services/sseService');
 const router = express.Router();
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
 const ASAAS_URL = 'https://api.asaas.com/v3';
+const INFINITEPAY_HANDLE = process.env.INFINITEPAY_HANDLE || 'cafemoriah';
+const PDV_BASE_URL = process.env.PDV_BASE_URL || 'https://app.cafemoriah.com.br';
 
 // POST /api/pdv/charge  (cobrança Asaas presencial)
 router.post('/charge', async (req, res, next) => {
@@ -52,8 +54,9 @@ router.get('/payment-status/:payment_id', async (req, res, next) => {
 
 // POST /api/pdv/infinitepay/charge
 router.post('/infinitepay/charge', async (req, res, next) => {
-    const { total, items, discount } = req.body;
+    const { total, items, cardType } = req.body;
     if (!total || total <= 0) return res.status(400).json({ error: 'Valor inválido.' });
+    if (!items || !items.length) return res.status(400).json({ error: 'Carrinho vazio.' });
 
     try {
         const db = getDb();
@@ -65,10 +68,12 @@ router.post('/infinitepay/charge', async (req, res, next) => {
                 return res.status(400).json({ error: `Estoque insuficiente: ${rows[0]?.name || 'Produto ' + item.id}` });
         }
 
+        // Criar venda pendente no banco
+        const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
         const saleId = await db.transaction(async (tx) => {
             const result = await tx.run(
                 'INSERT INTO sales (total, method, origin, status, customer_name) VALUES (?, ?, ?, ?, ?)',
-                [parseFloat(total), 'InfinitePay', 'Físico', 'Aguardando Pagamento', 'Cliente PDV']
+                [parseFloat(total), methodLabel, 'Físico', 'Aguardando Pagamento', 'Cliente PDV']
             );
             const sId = result[0].insertId;
             for (const item of items) {
@@ -79,12 +84,52 @@ router.post('/infinitepay/charge', async (req, res, next) => {
             return sId;
         });
 
+        const orderNsu = `moriah-pdv-${saleId}`;
+
+        // Criar cobrança no InfinitePay
+        let checkoutUrl = `https://checkout.infinitepay.io/${INFINITEPAY_HANDLE}`;
+        try {
+            const ipRes = await axios.post('https://api.infinitepay.io/invoices/public/checkout/links', {
+                handle: INFINITEPAY_HANDLE,
+                order_nsu: orderNsu,
+                items: items.map(i => ({
+                    price: Math.round(i.price * 100), // centavos
+                    quantity: i.quantity,
+                    description: i.name.substring(0, 60)
+                })),
+                redirect_url: `${PDV_BASE_URL}/?ip_paid=${saleId}`,
+                webhook_url: `${PDV_BASE_URL}/api/webhooks/infinitepay`
+            }, { headers: { 'Content-Type': 'application/json' }, timeout: 8000 });
+
+            checkoutUrl = ipRes.data?.checkout_url
+                || ipRes.data?.url
+                || ipRes.data?.link
+                || `https://checkout.infinitepay.io/${INFINITEPAY_HANDLE}`;
+
+            await db.run('UPDATE sales SET payment_id = ? WHERE id = ?', [orderNsu, saleId]);
+            console.log(`[INFINITEPAY] Cobrança criada para venda #${saleId}: ${checkoutUrl}`);
+        } catch (ipErr) {
+            console.error('[INFINITEPAY] Falha ao criar cobrança:', ipErr.response?.data || ipErr.message);
+            // Mesmo com erro na API, a venda pendente foi criada — continua com URL fallback
+        }
+
         broadcastStockUpdate(items.map(i => ({ product_id: i.id, quantity: i.quantity })));
-        res.json({ success: true, sale_id: saleId });
+        res.json({ success: true, sale_id: saleId, checkout_url: checkoutUrl });
+
     } catch (err) { next(err); }
 });
 
-// PUT /api/pdv/sales/:id/confirm
+// GET /api/pdv/infinitepay/status/:sale_id  (polling do frontend)
+router.get('/infinitepay/status/:sale_id', async (req, res, next) => {
+    try {
+        const db = getDb();
+        const [rows] = await db.query('SELECT status, method FROM sales WHERE id = ?', [req.params.sale_id]);
+        if (!rows.length) return res.status(404).json({ error: 'Venda não encontrada.' });
+        res.json({ paid: rows[0].status === 'Pago', status: rows[0].status, method: rows[0].method });
+    } catch (err) { next(err); }
+});
+
+// PUT /api/pdv/sales/:id/confirm  (confirmação manual se webhook falhar)
 router.put('/sales/:id/confirm', async (req, res, next) => {
     const { method } = req.body;
     try {

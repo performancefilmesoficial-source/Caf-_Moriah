@@ -40,15 +40,31 @@ router.post('/asaas', async (req, res) => {
 // POST /api/webhooks/infinitepay
 router.post('/infinitepay', async (req, res) => {
     try {
-        const { order_id, status } = req.body;
-        if (status === 'PAID') {
-            const db = getDb();
-            await db.run('UPDATE sales SET status = ? WHERE id = ?', ['Pago', order_id]);
-            console.log(`[WEBHOOK INFINITEPAY] Venda #${order_id} → Pago.`);
+        console.log('[WEBHOOK INFINITEPAY]', JSON.stringify(req.body));
+        const { order_nsu, paid_amount, amount, capture_method } = req.body;
+
+        // Confirma quando pago (paid_amount >= amount)
+        if (order_nsu && paid_amount != null && amount != null && paid_amount >= amount) {
+            // order_nsu formato: "moriah-pdv-{sale_id}"
+            const saleId = parseInt(order_nsu.replace('moriah-pdv-', ''), 10);
+            if (!isNaN(saleId)) {
+                const db = getDb();
+                const method = capture_method === 'debit_card'  ? 'Cartão Débito'
+                             : capture_method === 'credit_card' ? 'Cartão Crédito'
+                             : 'InfinitePay';
+                await db.run(
+                    'UPDATE sales SET status = ?, method = ? WHERE id = ? AND status != ?',
+                    ['Pago', method, saleId, 'Pago']
+                );
+                console.log(`[WEBHOOK INFINITEPAY] Venda #${saleId} → Pago (${method})`);
+            }
         }
-        res.json({ received: true });
+
+        // InfinitePay exige resposta exata dentro de 1s
+        res.json({ success: true, message: null });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('[WEBHOOK INFINITEPAY]', err.message);
+        res.status(400).json({ error: err.message });
     }
 });
 
