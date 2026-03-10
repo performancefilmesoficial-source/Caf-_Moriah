@@ -462,14 +462,27 @@
                             )}
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Físico</label>
+                                    <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Geral</label>
                                     <input type="number" name="stock" value={formData.stock} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Min.</label>
+                                    <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Mínimo</label>
                                     <input type="number" name="minStock" value={formData.minStock} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
                                 </div>
                             </div>
+
+                            {(formData.category === 'Café Grão' || formData.category === 'Café Moído') && (
+                                <div class="grid grid-cols-2 gap-4 border-t border-stone-100 pt-4">
+                                    <div class="bg-amber-50/50 p-3 rounded-2xl border border-amber-100">
+                                        <label class="block text-xs font-bold text-amber-800 uppercase tracking-wider mb-1">Estoque Grão</label>
+                                        <input type="number" name="stock_grao" value={formData.stock_grao || 0} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-amber-200 rounded-xl outline-none font-bold text-amber-900" />
+                                    </div>
+                                    <div class="bg-stone-50 p-3 rounded-2xl border border-stone-100">
+                                        <label class="block text-xs font-bold text-stone-600 uppercase tracking-wider mb-1">Estoque Moído (Pó)</label>
+                                        <input type="number" name="stock_moido" value={formData.stock_moido || 0} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none font-bold text-stone-800" />
+                                    </div>
+                                </div>
+                            )}
                             <div class="grid grid-cols-2 gap-4 border-t border-stone-100 pt-4">
                                 <div>
                                     <label class="block text-sm font-medium text-stone-500 mb-1">Peso (Gramas)</label>
@@ -526,11 +539,35 @@
                         const { items } = JSON.parse(e.data);
                         setProducts(prev =>
                             prev.map(p => {
-                                const delta = items.find(i => i.product_id === p.id);
-                                if (!delta) return p;
-                                return { ...p, stock: Math.max(0, (p.stock || 0) - delta.quantity) };
+                                const deltaArr = items.filter(i => i.product_id === p.id);
+                                if (!deltaArr.length) return p;
+
+                                let newP = { ...p };
+                                deltaArr.forEach(delta => {
+                                    if (delta.grind === 'Pó/Moído') {
+                                        newP.stock_moido = Math.max(0, (newP.stock_moido || 0) - delta.quantity);
+                                        if (newP.stock_moido < (newP.minStock || 5)) {
+                                            addNotification('Estoque Baixo', `${newP.name} (Pó) está com apenas ${newP.stock_moido} un.`, 'warning');
+                                        }
+                                    } else if (delta.grind === 'Em Grão') {
+                                        newP.stock_grao = Math.max(0, (newP.stock_grao || 0) - delta.quantity);
+                                        if (newP.stock_grao < (newP.minStock || 5)) {
+                                            addNotification('Estoque Baixo', `${newP.name} (Grão) está com apenas ${newP.stock_grao} un.`, 'warning');
+                                        }
+                                    } else {
+                                        newP.stock = Math.max(0, (newP.stock || 0) - delta.quantity);
+                                        if (newP.stock < (newP.minStock || 5)) {
+                                            addNotification('Estoque Baixo', `${newP.name} está com apenas ${newP.stock} un.`, 'warning');
+                                        }
+                                    }
+                                });
+                                return newP;
                             })
                         );
+                        // Se houver itens na venda (remoto), notifica
+                        if (items.length > 0) {
+                            addNotification('Nova Venda', `Uma venda de ${items.length} itens foi processada.`, 'success');
+                        }
                     });
                     es.onerror = () => { /* reconexão automática pelo browser */ };
                 } catch (_) { /* SSE não disponível offline */ }
@@ -556,6 +593,26 @@
             const [loginLoading, setLoginLoading] = useState(false);
             const [loginError, setLoginError] = useState('');
             const [cart, setCart] = useState([]);
+            const [customers, setCustomers] = useState([]);
+            const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+
+            const fetchCustomers = async () => {
+                if (!currentUser) return;
+                setIsLoadingCustomers(true);
+                try {
+                    const res = await apiFetch('/api/customers');
+                    if (res.ok) {
+                        const data = await res.json();
+                        setCustomers(Array.isArray(data) ? data : []);
+                    }
+                } catch (err) { console.error("Erro ao buscar clientes:", err); }
+                finally { setIsLoadingCustomers(false); }
+            };
+
+            useEffect(() => {
+                if (view === 'customers') fetchCustomers();
+            }, [view]);
+
             const [searchTerm, setSearchTerm] = useState('');
             const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
             const [isPixModalOpen, setIsPixModalOpen] = useState(false);
@@ -566,6 +623,7 @@
             const [customerPhone, setCustomerPhone] = useState('');
             const [editingProduct, setEditingProduct] = useState(null);
             const [periodFilter, setPeriodFilter] = useState('always');
+            const [infiniteInstallments, setInfiniteInstallments] = useState(1);
             const [originFilter, setOriginFilter] = useState('all'); // all, fisico, online
             const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
             const [grindPickerProduct, setGrindPickerProduct] = useState(null);
@@ -584,6 +642,27 @@
             });
             const [videoFile, setVideoFile] = useState(null);
             const [imageFile, setImageFile] = useState(null);
+            const [notifications, setNotifications] = useState(() => {
+                const saved = localStorage.getItem('moriah_notifications');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+            const addNotification = (title, message, type = 'info') => {
+                const newNotif = {
+                    id: Date.now(),
+                    title,
+                    message,
+                    type, // 'success', 'warning', 'info', 'error'
+                    read: false,
+                    date: new Date().toISOString()
+                };
+                setNotifications(prev => [newNotif, ...prev].slice(0, 30));
+            };
+
+            useEffect(() => {
+                localStorage.setItem('moriah_notifications', JSON.stringify(notifications));
+            }, [notifications]);
 
             // Carrega configurações do site ao abrir a aba (ou no início)
             useEffect(() => {
@@ -601,22 +680,14 @@
                     .catch(err => console.error("Erro config site:", err));
             }, []);
 
-            // Usuários vêm do banco via API — não do localStorage
+            // Carrega usuários apenas em settings
             const [users, setUsers] = useState([]);
-
-            const [infiniteInstallments, setInfiniteInstallments] = useState(1);
-
-            const [customers, setCustomers] = useState(() => {
-                const saved = localStorage.getItem('moriah_customers');
-                return saved ? JSON.parse(saved) : [];
-            });
 
             // Persiste sessão local (só o objeto do usuário, sem senha)
             useEffect(() => {
                 if (currentUser) localStorage.setItem('moriah_current_user', JSON.stringify(currentUser));
                 else localStorage.removeItem('moriah_current_user');
             }, [currentUser]);
-            useEffect(() => { localStorage.setItem('moriah_customers', JSON.stringify(customers)); }, [customers]);
 
             // Detecta retorno do InfinitePay (?ip_paid=sale_id na URL) ou retorno nativo do app (?tap_result=1&sale_id=...)
             useEffect(() => {
@@ -626,14 +697,18 @@
                 const saleId = params.get('sale_id');
                 const targetId = saleId || paidId;
 
+                console.log("[PDV] Verificando retorno InfinitePay:", { targetId, tapResult });
+
                 if (targetId) {
-                    window.history.replaceState({}, '', window.location.pathname);
+                    // Mantém os parâmetros na URL até processar, mas limpa para não entrar em loop se o dev recarregar manualmente
+                    // window.history.replaceState({}, '', window.location.pathname); 
+
                     const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
-                    localStorage.removeItem('ip_pending');
 
                     apiFetch(`/api/pdv/infinitepay/status/${targetId}`)
                         .then(r => r.json())
                         .then(data => {
+                            console.log("[PDV] Status do pagamento:", data);
                             if (data.paid) {
                                 setCart([]);
                                 setDiscount(0);
@@ -641,18 +716,28 @@
                                     setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
                                 }
                                 setIsSuccessModalOpen(true);
+                                // Agora sim limpamos o estado pendente e a URL
+                                localStorage.removeItem('ip_pending');
+                                window.history.replaceState({}, '', window.location.pathname);
                             } else {
-                                alert('Pagamento cancelado ou não aprovado na maquininha.');
-                                if (pending && pending.cart) {
-                                    setCart(pending.cart);
+                                // Se for tap_result=1 mas não deu pago, o usuário pode ter cancelado no app
+                                if (tapResult) {
+                                    alert('Pagamento cancelado ou não aprovado na maquininha.');
+                                    if (pending && pending.cart) {
+                                        setCart(pending.cart);
+                                    }
+                                    // Limpa para permitir nova tentativa
+                                    localStorage.removeItem('ip_pending');
+                                    window.history.replaceState({}, '', window.location.pathname);
                                 }
                             }
                         })
-                        .catch(() => {
-                            alert('Erro ao verificar pagamento. Consulte as Vendas.');
+                        .catch(err => {
+                            console.error("[PDV] Erro ao verificar status:", err);
+                            // Em caso de erro de rede, não limpamos o pending para tentar novamente se recarregar
                         });
                 }
-            }, []);
+            }, [currentUser]); // Adiciona currentUser para garantir que roda quando a sessão estabilizar
 
             // Busca vendas do banco de dados ao abrir a aba de vendas
             // Auto-refresh a cada 30s para capturar pedidos online automaticamente
@@ -691,7 +776,15 @@
             }, [sales, products]);
 
             const addToCart = (product, grind = null) => {
-                if (product.stock <= 0) return;
+                let available = product.stock;
+                if (grind === 'moido') available = product.stock_moido || 0;
+                else if (grind === 'grao') available = product.stock_grao || 0;
+
+                if (available <= 0) {
+                    alert('Estoque insuficiente para esta variação.');
+                    return;
+                }
+
                 const price = grind === 'moido' && parseFloat(product.price_moido) > 0
                     ? parseFloat(product.price_moido)
                     : parseFloat(product.price);
@@ -701,10 +794,13 @@
                     : grind === 'grao'
                         ? `${product.name} (Grão)`
                         : product.name;
+
+                const grindLabel = grind === 'moido' ? 'Pó/Moído' : grind === 'grao' ? 'Em Grão' : null;
+
                 setCart(curr => {
                     const existing = curr.find(i => i.cartKey === cartKey);
                     if (existing) return curr.map(i => i.cartKey === cartKey ? { ...i, quantity: i.quantity + 1 } : i);
-                    return [...curr, { ...product, cartKey, price, name: displayName, quantity: 1 }];
+                    return [...curr, { ...product, cartKey, price, name: displayName, quantity: 1, grind: grindLabel }];
                 });
             };
 
@@ -764,7 +860,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             seller: currentUser?.name || currentUser?.username || 'PDV',
-                            items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price })),
+                            items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price, grind: i.grind })),
                             subtotal,
                             discount,
                             total,
@@ -790,6 +886,7 @@
                     setIsCheckoutOpen(false);
                     setIsPixModalOpen(false);
                     setLastSale({ total, method, items: cart });
+                    addNotification('Venda Finalizada', `Venda de R$ ${total.toFixed(2)} confirmada em ${method}.`, 'success');
                     setIsSuccessModalOpen(true);
 
                 } catch (error) {
@@ -831,7 +928,7 @@
                         body: JSON.stringify({
                             total,
                             cardType,
-                            items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price }))
+                            items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price, grind: i.grind }))
                         })
                     });
 
@@ -872,7 +969,8 @@
                                 setIpWaiting(null);
                                 setCart([]);
                                 setDiscount(0);
-                                setLastSale({ total, method: methodLabel, items: cart });
+                                setLastSale({ id: sale_id, total, method: methodLabel, items: cart });
+                                addNotification('Venda Confirmada', `InfinitePay: R$ ${total.toFixed(2)} recebido.`, 'success');
                                 setIsSuccessModalOpen(true);
                             }
                         } catch (_) { }
@@ -894,22 +992,62 @@
                     });
                     setCart([]);
                     setDiscount(0);
-                    setLastSale({ total: ipWaiting.total, method: ipWaiting.method, items: cart });
+                    setLastSale({ id: ipWaiting.sale_id, total: ipWaiting.total, method: ipWaiting.method, items: cart });
+                    addNotification('Venda Confirmada (Manual)', `Venda de R$ ${ipWaiting.total.toFixed(2)} confirmada manualmente.`, 'info');
                     setIsSuccessModalOpen(true);
                 }
                 setIpWaiting(null);
             };
 
-            const sendWhatsAppReceipt = () => {
-                if (!customerPhone) return;
-                let message = `Obrigado por escolher o Café Moriah!\nFicamos felizes em fazer parte da sua rotina.\n\nPara acompanhar as novidades, siga a gente no Instagram: @cafemoriah__`;
-
+            const sendWhatsAppReceipt = async () => {
+                if (!customerPhone || !lastSale) return;
                 const cleanPhone = customerPhone.replace(/\D/g, '');
-                const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`;
-                window.open(url, '_blank');
-                setIsSuccessModalOpen(false);
-                setCustomerPhone('');
-                setView('pos');
+
+                try {
+                    const res = await apiFetch('/api/pdv/send-receipt', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            phone: cleanPhone,
+                            sale_id: lastSale.id,
+                            message: null // O backend gera o padrão Moriah
+                        })
+                    });
+
+                    if (res.ok) {
+                        alert('✅ Recibo enviado via WhatsApp!');
+                        setIsSuccessModalOpen(false);
+                        setCustomerPhone('');
+                        setView('pos');
+                    } else {
+                        const err = await res.json();
+                        alert('Falha no WhatsApp: ' + (err.error || 'Verifique a API'));
+                        // Fallback para link manual se a API falhar (opcional)
+                        const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(`Recibo Moriah: ${window.location.origin}/api/pdv/receipt/${lastSale.id}`)}`;
+                        window.open(url, '_blank');
+                    }
+                } catch (err) {
+                    console.error("Erro zap:", err);
+                    alert('Erro ao conectar com a API de WhatsApp.');
+                }
+            };
+
+            const triggerMarketing = async () => {
+                const message = prompt('Digite a mensagem de marketing:', 'Olá! Passando para lembrar que seu Café Moriah deve estar acabando. Que tal garantir um pacote novo hoje? ☕✨');
+                if (!message) return;
+
+                if (!confirm('Deseja disparar esta mensagem para todos os clientes elegíveis (regra de 15 dias)?')) return;
+
+                try {
+                    const res = await apiFetch('/api/customers/bulk-marketing', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message })
+                    });
+                    const data = await res.json();
+                    alert(data.message);
+                    fetchCustomers();
+                } catch (err) { alert('Erro ao disparar marketing.'); }
             };
 
             const deleteProduct = async (id) => {
@@ -1135,7 +1273,16 @@
                                                 </div>
                                                 <div class="flex justify-between items-center mt-1 w-full">
                                                     <span class="text-moriah-brown font-bold text-base">R$ {parseFloat(p.price).toFixed(2)}</span>
-                                                    <span class={`text-[11px] px-2.5 py-1 rounded-full font-black ${p.stock < p.minStock ? 'bg-red-500 text-white ring-4 ring-red-500/10' : 'bg-emerald-50 text-emerald-700 ring-4 ring-emerald-500/10'}`}>Estoque: {p.stock} {p.stock <= 0 ? '(ESGOTADO)' : ''}</span>
+                                                    <div class="flex flex-col items-end gap-1">
+                                                        {(hasTwoGrinds || p.stock_grao > 0 || p.stock_moido > 0) ? (
+                                                            <>
+                                                                <span class="text-[9px] px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-md font-bold">Grão: {p.stock_grao || 0}</span>
+                                                                <span class="text-[9px] px-1.5 py-0.5 bg-stone-50 text-stone-600 rounded-md font-bold">Pó: {p.stock_moido || 0}</span>
+                                                            </>
+                                                        ) : (
+                                                            <span class={`text-[11px] px-2.5 py-1 rounded-full font-black ${p.stock < p.minStock ? 'bg-red-500 text-white ring-4 ring-red-500/10' : 'bg-emerald-50 text-emerald-700 ring-4 ring-emerald-500/10'}`}>Estoque: {p.stock} {p.stock <= 0 ? '(ESGOTADO)' : ''}</span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
@@ -1440,7 +1587,17 @@
                                         <div key={p.id} class="flex items-center gap-3 px-4 py-3">
                                             <div class="flex-1 min-w-0">
                                                 <p class="font-bold text-sm text-stone-900 truncate">{p.name}</p>
-                                                <p class="text-xs text-stone-400">{p.category} · <span class={`font-black px-1.5 py-0.5 rounded text-[10px] ${p.stock < p.minStock ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>Estoque: {p.stock}</span></p>
+                                                <p class="text-xs text-stone-400">
+                                                    {p.category} ·
+                                                    {(p.category === 'Café Grão' || p.category === 'Café Moído' || p.stock_grao > 0 || p.stock_moido > 0) ? (
+                                                        <span class="ml-1 space-x-1">
+                                                            <span class="bg-amber-100 text-amber-700 px-1 rounded text-[10px]">G: {p.stock_grao || 0}</span>
+                                                            <span class="bg-stone-100 text-stone-700 px-1 rounded text-[10px]">P: {p.stock_moido || 0}</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span class={`font-black px-1.5 py-0.5 rounded text-[10px] ${p.stock < p.minStock ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>Estoque: {p.stock}</span>
+                                                    )}
+                                                </p>
                                                 <p class="text-sm font-bold text-moriah-brown">R$ {parseFloat(p.price).toFixed(2)}</p>
                                             </div>
                                             <div class="flex gap-1 shrink-0">
@@ -1466,7 +1623,16 @@
                                                 <tr key={p.id} class="hover:bg-stone-50 transition-colors">
                                                     <td class="px-6 py-4"><p class="font-bold">{p.name}</p><p class="text-xs text-stone-400">{p.sku}</p></td>
                                                     <td class="px-6 py-4 hidden md:table-cell"><span class="px-2 py-1 bg-stone-100 rounded text-xs text-stone-600">{p.category}</span></td>
-                                                    <td class="px-6 py-4"><span class={`font-bold ${p.stock < p.minStock ? 'text-red-500' : 'text-stone-700'}`}>{p.stock}</span></td>
+                                                    <td class="px-6 py-4">
+                                                        {(p.category === 'Café Grão' || p.category === 'Café Moído' || p.stock_grao > 0 || p.stock_moido > 0) ? (
+                                                            <div class="flex flex-col gap-1">
+                                                                <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded w-max">G: {p.stock_grao || 0}</span>
+                                                                <span class="text-[10px] font-bold text-stone-700 bg-stone-50 px-2 py-0.5 rounded w-max">P: {p.stock_moido || 0}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span class={`font-bold ${p.stock < p.minStock ? 'text-red-500' : 'text-stone-700'}`}>{p.stock}</span>
+                                                        )}
+                                                    </td>
                                                     <td class="px-6 py-4 text-stone-500 hidden md:table-cell">R$ {p.cost.toFixed(2)}</td>
                                                     <td class="px-6 py-4 font-bold text-moriah-brown whitespace-nowrap">R$ {p.price.toFixed(2)}</td>
                                                     <td class="px-6 py-4 hidden lg:table-cell whitespace-nowrap"><span class="text-emerald-600 font-medium">R$ {(p.price - p.cost).toFixed(2)}</span><span class="text-[10px] text-emerald-500 ml-1">{p.cost > 0 ? `(${(((p.price - p.cost) / p.cost) * 100).toFixed(0)}%)` : ''}</span></td>
@@ -1653,7 +1819,7 @@
                         return (
                             <div class="fixed inset-0 bg-stone-50 flex items-center justify-center p-4">
                                 <div class="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden p-10 flex flex-col items-center">
-                                    <img src={logoUrl} class="w-32 h-auto mb-8" />
+                                    <img src={logoUrl} class="w-28 h-auto mb-8 object-contain" />
                                     <h2 class="text-3xl font-black text-stone-900 mb-2">Bem-vindo de volta</h2>
                                     <p class="text-stone-400 text-sm mb-8 text-center">Acesse o Moriah PDV para gerenciar suas vendas.</p>
                                     <form class="w-full space-y-4" onSubmit={handleLogin}>
@@ -1911,19 +2077,35 @@
                                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                                     <div class="lg:col-span-1 bg-white p-6 rounded-3xl shadow-sm border border-stone-100 h-fit text-stone-900">
                                         <h3 class="font-bold mb-4 flex items-center gap-2 text-moriah-brown"><LucideIcon name="user-plus" className="w-5 h-5" />Novo Cliente</h3>
-                                        <form class="space-y-4" onSubmit={(e) => {
+                                        <form class="space-y-4" onSubmit={async (e) => {
                                             e.preventDefault();
-                                            const formData = new FormData(e.target);
-                                            const newCustomer = { id: Date.now(), name: formData.get('name'), whatsapp: formData.get('whatsapp'), email: formData.get('email'), created: new Date().toISOString() };
-                                            setCustomers([...customers, newCustomer]);
-                                            e.target.reset();
-                                            alert('Cliente cadastrado com sucesso!');
+                                            const fd = new FormData(e.target);
+                                            try {
+                                                const res = await apiFetch('/api/customers', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ name: fd.get('name'), phone: fd.get('whatsapp'), email: fd.get('email') })
+                                                });
+                                                if (res.ok) {
+                                                    alert('Cliente salvo com sucesso!');
+                                                    e.target.reset();
+                                                    fetchCustomers();
+                                                }
+                                            } catch (err) { alert('Erro ao salvar cliente.'); }
                                         }}>
                                             <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Nome Completo</label><input name="name" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
                                             <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">WhatsApp</label><input name="whatsapp" required placeholder="5511999999999" class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
-                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">E-mail</label><input name="email" type="email" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">E-mail</label><input name="email" type="email" class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
                                             <button type="submit" class="w-full py-4 bg-moriah-brown text-white rounded-xl font-bold hover:bg-moriah-dark transition-all mt-2 flex items-center justify-center gap-2 shadow-lg"><LucideIcon name="save" className="w-5 h-5" />Salvar Cliente</button>
                                         </form>
+
+                                        <div class="mt-8 pt-8 border-t border-stone-100">
+                                            <h3 class="font-bold mb-4 flex items-center gap-2 text-emerald-600"><LucideIcon name="megaphone" className="w-5 h-5" />Marketing Direto</h3>
+                                            <p class="text-[10px] text-stone-400 mb-4 uppercase font-bold">Lembrar clientes a cada 15 dias</p>
+                                            <button onClick={triggerMarketing} class="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-md">
+                                                <LucideIcon name="send" className="w-4 h-4" /> Disparar Lembretes
+                                            </button>
+                                        </div>
                                     </div>
                                     <div class="lg:col-span-2 space-y-4">
                                         <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden">
@@ -1934,18 +2116,25 @@
                                             <table class="w-full text-left">
                                                 <thead class="bg-stone-50/50 text-[10px] uppercase font-bold text-stone-400 border-b border-stone-100"><tr><th class="px-6 py-3">Cliente</th><th class="px-6 py-3 text-right">Ações</th></tr></thead>
                                                 <tbody class="divide-y divide-stone-50">
-                                                    {customers.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.whatsapp.includes(searchTerm)).map(c => (
+                                                    {(isLoadingCustomers ? [] : customers).filter(c => (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || c.phone.includes(searchTerm)).map(c => (
                                                         <tr key={c.id} class="hover:bg-stone-50 transition-colors">
-                                                            <td class="px-6 py-4"><p class="font-bold">{c.name}</p><div class="flex gap-4 mt-1 text-xs text-stone-400"><span class="flex items-center gap-1"><LucideIcon name="phone" className="w-3 h-3" /> {c.whatsapp}</span><span class="flex items-center gap-1"><LucideIcon name="mail" className="w-3 h-3" /> {c.email}</span></div></td>
+                                                            <td class="px-6 py-4">
+                                                                <p class="font-bold">{c.name}</p>
+                                                                <div class="flex gap-4 mt-1 text-xs text-stone-400">
+                                                                    <span class="flex items-center gap-1"><LucideIcon name="phone" className="w-3 h-3" /> {c.phone}</span>
+                                                                    {c.email && <span class="flex items-center gap-1"><LucideIcon name="mail" className="w-3 h-3" /> {c.email}</span>}
+                                                                </div>
+                                                                {c.last_message_at && <p class="text-[9px] text-emerald-600 font-bold uppercase mt-1">Último disparo: {new Date(c.last_message_at).toLocaleDateString('pt-BR')}</p>}
+                                                            </td>
                                                             <td class="px-6 py-4 text-right">
                                                                 <div class="flex justify-end gap-2">
-                                                                    <a href={`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`} target="_blank" class="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="Falar no WhatsApp"><LucideIcon name="message-circle" className="w-4 h-4" /></a>
-                                                                    <button onClick={() => { if (confirm('Excluir este cliente?')) setCustomers(curr => curr.filter(cust => cust.id !== c.id)); }} class="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
+                                                                    <a href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} target="_blank" class="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="Falar no WhatsApp"><LucideIcon name="message-circle" className="w-4 h-4" /></a>
+                                                                    <button onClick={async () => { if (confirm('Excluir este cliente?')) { await apiFetch(`/api/customers/${c.id}`, { method: 'DELETE' }); fetchCustomers(); } }} class="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
                                                                 </div>
                                                             </td>
                                                         </tr>
                                                     ))}
-                                                    {customers.length === 0 && (<tr><td colspan="2" class="px-6 py-12 text-center text-stone-300 italic">Sua base de clientes está vazia. Comece a cadastrar agora!</td></tr>)}
+                                                    {(isLoadingCustomers || customers.length === 0) && (<tr><td colspan="2" class="px-6 py-12 text-center text-stone-300 italic">{isLoadingCustomers ? 'Carregando base de clientes...' : 'Sua base de clientes está vazia.'}</td></tr>)}
                                                 </tbody>
                                             </table>
                                         </div>
@@ -1957,7 +2146,22 @@
                 }
             };
 
-            if (!currentUser) return renderView('login');
+            if (!currentUser) {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('tap_result') || params.get('ip_paid')) {
+                    return (
+                        <div class="flex items-center justify-center h-screen bg-stone-50 w-full">
+                            <div class="text-center p-8 bg-white rounded-3xl shadow-xl border border-stone-100">
+                                <div class="w-12 h-12 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                                <h2 class="text-xl font-bold text-stone-800 mb-2">Restaurando Sessão</h2>
+                                <p class="text-stone-500 text-sm">Validando seu pagamento com a InfinitePay...</p>
+                                <p class="text-[10px] text-stone-300 mt-4">Por favor, aguarde alguns segundos.</p>
+                            </div>
+                        </div>
+                    );
+                }
+                return renderView('login');
+            }
 
             // Primeiro login: força troca de senha
             if (currentUser.must_change_password) {
@@ -1984,7 +2188,7 @@
                 return (
                     <div class="fixed inset-0 bg-stone-50 flex items-center justify-center p-4">
                         <div class="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden p-10 flex flex-col items-center">
-                            <img src={logoUrl} class="h-14 w-auto mb-8" />
+                            <img src={logoUrl} class="h-12 w-auto mb-8 object-contain" />
                             <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4 text-amber-600"><LucideIcon name="lock" className="w-8 h-8" /></div>
                             <h2 class="text-2xl font-black text-stone-900 mb-1">Bem-vindo, {currentUser.name}!</h2>
                             <p class="text-stone-400 text-sm mb-8 text-center">Por segurança, defina uma senha pessoal antes de continuar.</p>
@@ -2016,7 +2220,49 @@
             return (
                 <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-stone-50 w-full">
                     <aside class="hidden md:flex w-72 bg-white border-r border-stone-100 flex-col p-6 space-y-8 no-print">
-                        <div class="flex items-center justify-center py-2 mb-2"><img src={logoUrl} class="h-9 w-auto max-w-[160px] object-contain" /></div>
+                        <div class="flex items-center justify-between py-2 mb-2">
+                            <img src={logoUrl} class="h-8 w-auto max-w-[150px] object-contain" />
+                            <div class="relative">
+                                <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} class="p-2 text-stone-400 hover:text-stone-600 relative">
+                                    <LucideIcon name="bell" className="w-5 h-5" />
+                                    {notifications.filter(n => !n.read).length > 0 && (
+                                        <span class="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
+                                            {notifications.filter(n => !n.read).length}
+                                        </span>
+                                    )}
+                                </button>
+                                {isNotificationsOpen && (
+                                    <div class="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-stone-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-4 border-b border-stone-50 flex justify-between items-center bg-stone-50/50">
+                                            <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
+                                            <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas</button>
+                                        </div>
+                                        <div class="max-h-80 overflow-y-auto divide-y divide-stone-50">
+                                            {notifications.length > 0 ? notifications.map(n => (
+                                                <div key={n.id} class={`p-4 hover:bg-stone-50 transition-colors ${!n.read ? 'bg-moriah-brown/5' : ''}`}>
+                                                    <div class="flex gap-3">
+                                                        <div class={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : n.type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                                                        <div>
+                                                            <p class="text-xs font-bold text-stone-900">{n.title}</p>
+                                                            <p class="text-[11px] text-stone-500 leading-tight mt-0.5">{n.message}</p>
+                                                            <p class="text-[9px] text-stone-400 mt-1">{new Date(n.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )) : (
+                                                <div class="p-8 text-center text-stone-400">
+                                                    <LucideIcon name="bell-off" className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                                    <p class="text-xs">Silêncio por aqui...</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {notifications.length > 0 && (
+                                            <button onClick={() => setNotifications([])} class="w-full py-3 text-center text-xs font-bold text-stone-400 hover:text-red-500 transition-colors bg-stone-50/50 border-t border-stone-50">Limpar histórico</button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                         <nav class="flex-1 space-y-2">
                             <SidebarItem onClick={() => setView('dashboard')} active={view === 'dashboard'} icon="layout-dashboard" label="Dashboard" />
                             <SidebarItem onClick={() => setView('pos')} active={view === 'pos'} icon="shopping-bag" label="Ponto de Venda" />
@@ -2035,8 +2281,48 @@
                         </div>
                     </aside>
                     <header class="md:hidden sticky top-0 z-40 bg-white border-b border-stone-100 px-4 py-3 flex items-center justify-between no-print w-full">
-                        <img src={logoUrl} class="h-8 w-auto" />
+                        <img src={logoUrl} class="h-7 w-auto max-w-[120px] object-contain" />
                         <div class="flex items-center gap-3">
+                            <div class="relative">
+                                <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} class="p-2 bg-stone-50 rounded-lg text-stone-600 relative">
+                                    <LucideIcon name="bell" className="w-5 h-5" />
+                                    {notifications.filter(n => !n.read).length > 0 && (
+                                        <span class="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
+                                            {notifications.filter(n => !n.read).length}
+                                        </span>
+                                    )}
+                                </button>
+                                {isNotificationsOpen && (
+                                    <div class="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-stone-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-4 border-b border-stone-50 flex justify-between items-center bg-stone-50/50">
+                                            <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
+                                            <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas como lidas</button>
+                                        </div>
+                                        <div class="max-h-80 overflow-y-auto divide-y divide-stone-50">
+                                            {notifications.length > 0 ? notifications.map(n => (
+                                                <div key={n.id} class={`p-4 hover:bg-stone-50 transition-colors ${!n.read ? 'bg-moriah-brown/5' : ''}`}>
+                                                    <div class="flex gap-3">
+                                                        <div class={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : n.type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                                                        <div>
+                                                            <p class="text-xs font-bold text-stone-900">{n.title}</p>
+                                                            <p class="text-[11px] text-stone-500 leading-tight mt-0.5">{n.message}</p>
+                                                            <p class="text-[9px] text-stone-400 mt-1">{new Date(n.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )) : (
+                                                <div class="p-8 text-center text-stone-400">
+                                                    <LucideIcon name="bell-off" className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                                    <p class="text-xs">Nenhuma notificação</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {notifications.length > 0 && (
+                                            <button onClick={() => setNotifications([])} class="w-full py-3 text-center text-xs font-bold text-stone-400 hover:text-red-500 transition-colors bg-stone-50/50 border-t border-stone-50">Limpar histórico</button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                             <div class="text-right"><p class="text-[8px] font-bold text-stone-400 uppercase leading-none">Vendedor</p><p class="text-xs font-black text-stone-900 leading-none mt-0.5">{currentUser.username}</p></div>
                             <button onClick={() => { localStorage.removeItem('moriah_jwt'); setCurrentUser(null); }} class="p-2 bg-stone-50 rounded-lg text-moriah-brown p-2"><LucideIcon name="log-out" className="w-4 h-4" /></button>
                         </div>

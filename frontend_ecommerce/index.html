@@ -118,6 +118,7 @@
             const [shippingService, setShippingService] = React.useState('');
             const [shippingServiceId, setShippingServiceId] = React.useState(null);
             const [selectedProduct, setSelectedProduct] = React.useState(null);
+            const [view, setView] = React.useState('home');
 
             // Helper genérico para Imagens vindas do Backend (String comum ou Array JSON)
             const getProductImages = (urlData) => {

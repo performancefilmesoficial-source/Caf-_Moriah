@@ -16,15 +16,16 @@ const { apiLimiter } = require('./middleware/rateLimiters');
 const { sseMiddleware } = require('./services/sseService');
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
-const authRoutes      = require('./routes/auth');
-const productsRoutes  = require('./routes/products');
-const salesRoutes     = require('./routes/sales');
-const checkoutRoute   = require('./routes/checkout');
-const shippingRoutes  = require('./routes/shipping');
-const webhooksRoutes  = require('./routes/webhooks');
-const dashboardRoute  = require('./routes/dashboard');
-const pdvRoutes       = require('./routes/pdv');
-const settingsRoutes  = require('./routes/settings');
+const authRoutes = require('./routes/auth');
+const productsRoutes = require('./routes/products');
+const salesRoutes = require('./routes/sales');
+const checkoutRoute = require('./routes/checkout');
+const shippingRoutes = require('./routes/shipping');
+const webhooksRoutes = require('./routes/webhooks');
+const dashboardRoute = require('./routes/dashboard');
+const pdvRoutes = require('./routes/pdv');
+const settingsRoutes = require('./routes/settings');
+const customersRoutes = require('./routes/customers');
 
 const app = express();
 
@@ -81,23 +82,24 @@ app.post('/api/generate-ai', (req, res) => {
 });
 
 // ─── Rotas da API ─────────────────────────────────────────────────────────────
-app.use('/api/auth',          authRoutes);
-app.use('/api/users',         authRoutes); // /api/users usa o mesmo router de auth
-app.use('/api/products',      productsRoutes);
-app.use('/api/sales',         salesRoutes);
-app.use('/api/checkout',      checkoutRoute);
-app.use('/api/shipping',      shippingRoutes);
-app.use('/api/webhooks',      webhooksRoutes);
-app.use('/api/dashboard',     dashboardRoute);
-app.use('/api/pdv',           pdvRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/users', authRoutes); // /api/users usa o mesmo router de auth
+app.use('/api/products', productsRoutes);
+app.use('/api/sales', salesRoutes);
+app.use('/api/checkout', checkoutRoute);
+app.use('/api/shipping', shippingRoutes);
+app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/dashboard', dashboardRoute);
+app.use('/api/pdv', pdvRoutes);
 app.use('/api/site-settings', settingsRoutes);
+app.use('/api/customers', customersRoutes);
 
 // ─── Arquivos estáticos (imagens antigas em /uploads) ─────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // ─── Frontend: roteamento por hostname ───────────────────────────────────────
 const ecommerceStatic = express.static(path.join(__dirname, '..', 'frontend_ecommerce'));
-const pdvStatic       = express.static(path.join(__dirname, '..'));
+const pdvStatic = express.static(path.join(__dirname, '..'));
 
 app.use('/ecommerce', ecommerceStatic);
 

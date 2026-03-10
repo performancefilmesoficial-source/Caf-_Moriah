@@ -63,9 +63,15 @@ router.post('/infinitepay/charge', async (req, res, next) => {
 
         // Validar estoque
         for (const item of items) {
-            const [rows] = await db.query('SELECT stock, name FROM products WHERE id = ?', [item.id]);
-            if (!rows.length || rows[0].stock < item.quantity)
-                return res.status(400).json({ error: `Estoque insuficiente: ${rows[0]?.name || 'Produto ' + item.id}` });
+            const [rows] = await db.query('SELECT stock, stock_moido, stock_grao, name FROM products WHERE id = ?', [item.id]);
+            if (!rows.length) return res.status(400).json({ error: 'Produto não encontrado: ' + item.id });
+
+            let available = rows[0].stock;
+            if (item.grind === 'Pó/Moído') available = rows[0].stock_moido;
+            else if (item.grind === 'Em Grão') available = rows[0].stock_grao;
+
+            if (available < item.quantity)
+                return res.status(400).json({ error: `Estoque insuficiente (${item.grind || 'Geral'}): ${rows[0].name}` });
         }
 
         // Criar venda pendente no banco
@@ -79,11 +85,18 @@ router.post('/infinitepay/charge', async (req, res, next) => {
             for (const item of items) {
                 await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
                     [sId, item.id, item.name, item.quantity, item.price]);
-                await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+
+                if (item.grind === 'Pó/Moído') {
+                    await tx.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [item.quantity, item.id]);
+                } else if (item.grind === 'Em Grão') {
+                    await tx.run('UPDATE products SET stock_grao = stock_grao - ? WHERE id = ?', [item.quantity, item.id]);
+                } else {
+                    await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+                }
             }
             return sId;
         });
-
+        // ... (rest of charge route logic remains and NSU logic remains)
         const orderNsu = `moriah-pdv-${saleId}`;
 
         // Criar cobrança no InfinitePay
@@ -95,7 +108,7 @@ router.post('/infinitepay/charge', async (req, res, next) => {
                 items: items.map(i => ({
                     price: Math.round(i.price * 100), // centavos
                     quantity: i.quantity,
-                    description: i.name.substring(0, 60)
+                    description: `${i.name}${i.grind ? ' (' + i.grind + ')' : ''}`.substring(0, 60)
                 })),
                 redirect_url: `${PDV_BASE_URL}/?ip_paid=${saleId}`,
                 webhook_url: `${PDV_BASE_URL}/api/webhooks/infinitepay`
@@ -107,29 +120,27 @@ router.post('/infinitepay/charge', async (req, res, next) => {
                 || `https://checkout.infinitepay.io/${INFINITEPAY_HANDLE}`;
 
             await db.run('UPDATE sales SET payment_id = ? WHERE id = ?', [orderNsu, saleId]);
-            console.log(`[INFINITEPAY] Cobrança criada para venda #${saleId}: ${checkoutUrl}`);
         } catch (ipErr) {
             console.error('[INFINITEPAY] Falha ao criar cobrança:', ipErr.response?.data || ipErr.message);
-            // Mesmo com erro na API, a venda pendente foi criada — continua com URL fallback
         }
 
-        broadcastStockUpdate(items.map(i => ({ product_id: i.id, quantity: i.quantity })));
+        broadcastStockUpdate(items.map(i => ({ product_id: i.id, quantity: i.quantity, grind: i.grind })));
         res.json({ success: true, sale_id: saleId, checkout_url: checkoutUrl });
 
     } catch (err) { next(err); }
 });
 
-// GET /api/pdv/infinitepay/status/:sale_id  (polling do frontend)
+// GET /api/pdv/infinitepay/status/:sale_id
 router.get('/infinitepay/status/:sale_id', async (req, res, next) => {
     try {
         const db = getDb();
         const [rows] = await db.query('SELECT status, method FROM sales WHERE id = ?', [req.params.sale_id]);
         if (!rows.length) return res.status(404).json({ error: 'Venda não encontrada.' });
-        res.json({ paid: rows[0].status === 'Pago', status: rows[0].status, method: rows[0].method });
+        res.json({ paid: rows[0].status === 'Pago' || rows[0].status === 'Concluído', status: rows[0].status, method: rows[0].method });
     } catch (err) { next(err); }
 });
 
-// PUT /api/pdv/sales/:id/confirm  (confirmação manual se webhook falhar)
+// PUT /api/pdv/sales/:id/confirm
 router.put('/sales/:id/confirm', async (req, res, next) => {
     const { method } = req.body;
     try {
@@ -150,9 +161,15 @@ router.post('/infinitepay/tap', async (req, res, next) => {
 
         // Validar estoque
         for (const item of items) {
-            const [rows] = await db.query('SELECT stock, name FROM products WHERE id = ?', [item.id]);
-            if (!rows.length || rows[0].stock < item.quantity)
-                return res.status(400).json({ error: `Estoque insuficiente: ${rows[0]?.name || 'Produto ' + item.id}` });
+            const [rows] = await db.query('SELECT stock, stock_moido, stock_grao, name FROM products WHERE id = ?', [item.id]);
+            if (!rows.length) return res.status(400).json({ error: 'Produto não encontrado: ' + item.id });
+
+            let available = rows[0].stock;
+            if (item.grind === 'Pó/Moído') available = rows[0].stock_moido;
+            else if (item.grind === 'Em Grão') available = rows[0].stock_grao;
+
+            if (available < item.quantity)
+                return res.status(400).json({ error: `Estoque insuficiente (${item.grind || 'Geral'}): ${rows[0].name}` });
         }
 
         // Criar venda pendente no banco
@@ -166,17 +183,102 @@ router.post('/infinitepay/tap', async (req, res, next) => {
             for (const item of items) {
                 await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
                     [sId, item.id, item.name, item.quantity, item.price]);
-                await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+
+                if (item.grind === 'Pó/Moído') {
+                    await tx.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [item.quantity, item.id]);
+                } else if (item.grind === 'Em Grão') {
+                    await tx.run('UPDATE products SET stock_grao = stock_grao - ? WHERE id = ?', [item.quantity, item.id]);
+                } else {
+                    await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+                }
             }
             return sId;
         });
 
-        broadcastStockUpdate(items.map(i => ({ product_id: i.id, quantity: i.quantity })));
-
-        // Retorna apenas os dados da venda criados para o frontend gerar o Deeplink
+        broadcastStockUpdate(items.map(i => ({ product_id: i.id, quantity: i.quantity, grind: i.grind })));
         res.json({ success: true, sale_id: saleId, total: parseFloat(total) });
 
     } catch (err) { next(err); }
+});
+
+// GET /api/pdv/receipt/:sale_id (Recibo público com meta tags)
+router.get('/receipt/:sale_id', async (req, res, next) => {
+    try {
+        const db = getDb();
+        const [saleRows] = await db.query('SELECT * FROM sales WHERE id = ?', [req.params.sale_id]);
+        if (!saleRows.length) return res.status(404).send('Venda não encontrada');
+        const sale = saleRows[0];
+
+        const [itemRows] = await db.query('SELECT * FROM sale_items WHERE sale_id = ?', [req.params.sale_id]);
+
+        const itemsHtml = itemRows.map(i => `<li>${i.quantity}x ${i.product_name} - R$ ${i.price.toFixed(2)}</li>`).join('');
+
+        res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Recibo - Moriah Café</title>
+                <!-- Meta tags para preview no WhatsApp -->
+                <meta property="og:title" content="Recibo Moriah Café - R$ ${sale.total.toFixed(2)}">
+                <meta property="og:description" content="Obrigado pela sua compra! Clique para ver os detalhes do seu pedido.">
+                <meta property="og:image" content="${PDV_BASE_URL}/favicon.ico">
+                <style>
+                    body { font-family: sans-serif; padding: 20px; color: #444; background: #fafafa; }
+                    .receipt { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
+                    h1 { color: #5d4037; font-size: 22px; margin-bottom: 5px; }
+                    .total { font-size: 24px; font-weight: bold; margin-top: 20px; border-top: 1px solid #eee; padding-top: 10px; }
+                </style>
+            </head>
+            <body>
+                <div class="receipt">
+                    <h1>Moriah Café</h1>
+                    <p>Comprovante de Venda #${sale.id}</p>
+                    <p><small>${new Date(sale.created_at).toLocaleString('pt-BR')}</small></p>
+                    <hr>
+                    <ul>${itemsHtml}</ul>
+                    <div class="total">Total: R$ ${sale.total.toFixed(2)}</div>
+                    <p>Pagamento: ${sale.method}</p>
+                    <p style="margin-top: 40px; font-size: 12px; color: #999;">Obrigado por escolher o Café Moriah!</p>
+                </div>
+            </body>
+            </html>
+        `);
+    } catch (err) { next(err); }
+});
+
+// POST /api/pdv/send-receipt
+const whatsappService = require('../services/whatsappService');
+router.post('/send-receipt', async (req, res, next) => {
+    const { phone, sale_id, message } = req.body;
+    if (!phone || !sale_id) return res.status(400).json({ error: 'Telefone e ID da venda são obrigatórios.' });
+
+    try {
+        const db = getDb();
+        const [saleRows] = await db.query('SELECT total, method FROM sales WHERE id = ?', [sale_id]);
+        if (!saleRows.length) return res.status(404).json({ error: 'Venda não encontrada.' });
+
+        const [settingsRows] = await db.query('SELECT about_image FROM site_settings LIMIT 1');
+        const brandingImage = settingsRows[0]?.about_image || `${PDV_BASE_URL}/favicon.ico`;
+
+        // Se a imagem no banco for Base64, a Evolution API aceita se enviarmos o conteúdo puro ou URL.
+        // Como o PDV geralmente roda em HTTPS público, passamos a URL.
+        const receiptUrl = `${PDV_BASE_URL}/api/pdv/receipt/${sale_id}`;
+        const finalMessage = message || `*Moriah Café - Recibo Digital*\n\nValor: R$ ${saleRows[0].total.toFixed(2)}\nPagamento: ${saleRows[0].method}\n\n📄 Ver recibo completo:\n${receiptUrl}`;
+
+        await whatsappService.sendImage(phone.replace(/\D/g, ''), finalMessage, brandingImage);
+
+        // Atualiza/Cria cliente se necessário
+        await axios.post(`${PDV_BASE_URL}/api/customers`, { phone: phone.replace(/\D/g, '') }, {
+            headers: { 'Authorization': req.headers.authorization }
+        }).catch(() => { });
+
+        res.json({ success: true, message: 'Recibo enviado com sucesso!' });
+    } catch (err) {
+        console.error('[WhatsApp Receipt] Erro:', err.message);
+        res.status(500).json({ error: 'Erro ao enviar WhatsApp. Verifique a API.' });
+    }
 });
 
 module.exports = router;

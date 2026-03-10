@@ -31,26 +31,15 @@ router.get('/online', async (req, res, next) => {
 
 // POST /api/products
 router.post('/', authenticateJWT, async (req, res, next) => {
-    const { name, category, cost, price, price_moido, stock, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
+    const { name, category, cost, price, price_moido, stock, stock_moido, stock_grao, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
     try {
         const db = getDb();
         const result = await db.run(
-            'INSERT INTO products (name, category, cost, price, price_moido, stock, minStock, sku, image_url, description, weight_grams, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, category, cost, price, price_moido || 0, stock, minStock, sku, image_url, description, weight_grams, sell_online]
+            'INSERT INTO products (name, category, cost, price, price_moido, stock, stock_moido, stock_grao, minStock, sku, image_url, description, weight_grams, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [name, category, cost, price, price_moido || 0, stock, stock_moido || 0, stock_grao || 0, minStock, sku, image_url, description, weight_grams, sell_online]
         );
         res.status(201).json({ id: result[0].insertId, message: 'Produto cadastrado com sucesso!' });
     } catch (err) {
-        // Fallback: coluna price_moido pode não existir em bancos antigos
-        if (err.code === 'ER_BAD_FIELD_ERROR' && err.message?.includes('price_moido')) {
-            try {
-                const db = getDb();
-                const result = await db.run(
-                    'INSERT INTO products (name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [req.body.name, req.body.category, req.body.cost, req.body.price, req.body.stock, req.body.minStock, req.body.sku, req.body.image_url, req.body.description, req.body.weight_grams, req.body.sell_online]
-                );
-                return res.status(201).json({ id: result[0].insertId, message: 'Produto cadastrado com sucesso!' });
-            } catch (e2) { return next(e2); }
-        }
         next(err);
     }
 });
@@ -58,17 +47,13 @@ router.post('/', authenticateJWT, async (req, res, next) => {
 // PUT /api/products/:id
 router.put('/:id', authenticateJWT, async (req, res, next) => {
     const { id } = req.params;
-    const { name, category, cost, price, price_moido, stock, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
+    const { name, category, cost, price, price_moido, stock, stock_moido, stock_grao, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
     try {
         const db = getDb();
         await db.run(
-            'UPDATE products SET name=?, category=?, cost=?, price=?, stock=?, minStock=?, sku=?, image_url=?, description=?, weight_grams=?, sell_online=? WHERE id=?',
-            [name, category, cost, price, stock, minStock, sku, image_url, description, weight_grams, sell_online, id]
+            'UPDATE products SET name=?, category=?, cost=?, price=?, price_moido=?, stock=?, stock_moido=?, stock_grao=?, minStock=?, sku=?, image_url=?, description=?, weight_grams=?, sell_online=? WHERE id=?',
+            [name, category, cost, price, price_moido || 0, stock, stock_moido || 0, stock_grao || 0, minStock, sku, image_url, description, weight_grams, sell_online, id]
         );
-        if (price_moido !== undefined) {
-            try { await db.run('UPDATE products SET price_moido=? WHERE id=?', [price_moido || 0, id]); }
-            catch (_) { /* coluna pode não existir em versão antiga */ }
-        }
         res.json({ message: 'Produto atualizado com sucesso!' });
     } catch (err) { next(err); }
 });

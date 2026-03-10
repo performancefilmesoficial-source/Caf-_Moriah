@@ -29,6 +29,8 @@ async function initTables(db, mysql) {
         price REAL NOT NULL,
         price_moido REAL DEFAULT 0,
         stock INTEGER NOT NULL DEFAULT 0,
+        stock_moido INTEGER DEFAULT 0,
+        stock_grao INTEGER DEFAULT 0,
         minStock INTEGER NOT NULL DEFAULT 5,
         sku TEXT NOT NULL,
         image_url MEDIUMTEXT,
@@ -37,6 +39,18 @@ async function initTables(db, mysql) {
         sell_online INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+
+    await db.run(`CREATE TABLE IF NOT EXISTS customers (
+        id INTEGER PRIMARY KEY ${autoInc},
+        name TEXT,
+        phone TEXT NOT NULL UNIQUE,
+        email TEXT,
+        last_message_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // Migração para clientes antigos
+    try { await db.run('ALTER TABLE customers ADD COLUMN last_message_at DATETIME'); } catch (_) { }
 
     await db.run(`CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY ${autoInc},
@@ -135,6 +149,8 @@ async function initTables(db, mysql) {
     }
 
     try { await db.run('ALTER TABLE products ADD COLUMN price_moido REAL DEFAULT 0'); } catch (_) { }
+    try { await db.run('ALTER TABLE products ADD COLUMN stock_moido INTEGER DEFAULT 0'); } catch (_) { }
+    try { await db.run('ALTER TABLE products ADD COLUMN stock_grao INTEGER DEFAULT 0'); } catch (_) { }
 
     console.log('[DB] Inicialização concluída.');
 }
