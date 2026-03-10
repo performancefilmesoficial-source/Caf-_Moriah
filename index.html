@@ -601,7 +601,10 @@
                     .catch(err => console.error("Erro config site:", err));
             }, []);
 
+            // Usuários vêm do banco via API — não do localStorage
             const [users, setUsers] = useState([]);
+
+            const [infiniteInstallments, setInfiniteInstallments] = useState(1);
 
             const [customers, setCustomers] = useState(() => {
                 const saved = localStorage.getItem('moriah_customers');
@@ -787,10 +790,19 @@
                 // Usando cálculo "Por dentro" para o cliente pagar a taxa exata e o lojista receber o "total" bruto
                 // Fórmula: Valor a Cobrar = Valor Liquido / (1 - Taxa)
                 let appliedRate = 0;
+                let finalInstallments = '1';
+
                 if (cardType === 'debit') {
                     appliedRate = 0.0199; // 1.99%
                 } else if (cardType === 'credit') {
-                    appliedRate = 0.0319; // 3.19% (crédito à vista)
+                    finalInstallments = String(infiniteInstallments);
+                    // Tabela de juros padrão InfinitePay (Tap to Pay - Receber na Hora)
+                    const creditRates = {
+                        1: 0.0319, 2: 0.0549, 3: 0.0649, 4: 0.0749,
+                        5: 0.0849, 6: 0.0949, 7: 0.1049, 8: 0.1149,
+                        9: 0.1249, 10: 0.1349, 11: 0.1449, 12: 0.1549
+                    };
+                    appliedRate = creditRates[infiniteInstallments] || 0.0319;
                 }
                 total = parseFloat((total / (1 - appliedRate)).toFixed(2));
 
@@ -817,7 +829,7 @@
                     // Parâmetros do Deep Link nativo (InfiniteTap) repassados pela InfinitePay
                     const amountCents = Math.round(total * 100);
                     const infinitePayMethod = cardType; // 'credit' ou 'debit'
-                    const installments = '1';
+                    const installments = finalInstallments;
                     const orderId = `moriah-pdv-${sale_id}`;
                     const resultUrl = encodeURIComponent(`${window.location.origin}/?tap_result=1&sale_id=${sale_id}`);
                     const appClientReferrer = 'MoriahPDV';
@@ -1185,9 +1197,26 @@
                                                     <button onClick={() => handleInfinitePay('debit')} class="flex items-center justify-between p-3.5 bg-blue-50 hover:bg-blue-100 rounded-2xl border border-blue-200 transition-all group">
                                                         <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-5 h-5 text-blue-600" /><div class="text-left"><span class="font-bold text-blue-700">Débito</span><p class="text-[10px] text-stone-400">InfinitePay • aproxime o cartão</p></div></div><LucideIcon name="chevron-right" className="w-5 h-5 text-blue-300 group-hover:text-blue-500" />
                                                     </button>
-                                                    <button onClick={() => handleInfinitePay('credit')} class="flex items-center justify-between p-3.5 bg-purple-50 hover:bg-purple-100 rounded-2xl border border-purple-200 transition-all group">
-                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-5 h-5 text-purple-600" /><div class="text-left"><span class="font-bold text-purple-700">Crédito</span><p class="text-[10px] text-stone-400">InfinitePay • aproxime o cartão</p></div></div><LucideIcon name="chevron-right" className="w-5 h-5 text-purple-300 group-hover:text-purple-500" />
-                                                    </button>
+
+                                                    <div class="flex flex-col bg-purple-50 rounded-2xl border border-purple-200 p-3.5 hover:bg-purple-100 transition-all group">
+                                                        <div class="flex items-center justify-between w-full">
+                                                            <div class="flex items-center gap-3 w-full">
+                                                                <LucideIcon name="credit-card" className="w-5 h-5 text-purple-600" />
+                                                                <div class="text-left flex flex-col gap-1 w-full">
+                                                                    <span class="font-bold text-purple-700">Crédito</span>
+                                                                    <div class="flex items-center justify-between w-full">
+                                                                        <div class="flex items-center gap-2">
+                                                                            <select value={infiniteInstallments} onChange={(e) => setInfiniteInstallments(Number(e.target.value))} class="text-xs bg-white border border-purple-200 rounded px-2 py-0.5 text-purple-900 font-bold outline-none cursor-pointer">
+                                                                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => <option key={n} value={n}>{n}x</option>)}
+                                                                            </select>
+                                                                            <span class="text-[10px] text-stone-500 hidden sm:inline">InfinitePay • aproxime o cartão</span>
+                                                                        </div>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleInfinitePay('credit'); }} class="bg-purple-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-purple-700 transition">Cobrar</button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                     <button onClick={() => finalizeSale('PIX')} class="flex items-center justify-between p-3.5 bg-teal-50 hover:bg-teal-100 rounded-2xl border border-teal-200 transition-all group">
                                                         <div class="flex items-center gap-3"><LucideIcon name="qr-code" className="w-5 h-5 text-teal-600" /><span class="font-bold text-teal-800">PIX</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-teal-300 group-hover:text-teal-500" />
                                                     </button>
