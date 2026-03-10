@@ -18,6 +18,14 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Service Worker: cache offline + fila de vendas -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .then(reg => console.log('[SW] Registrado:', reg.scope))
+                .catch(err => console.warn('[SW] Falha no registro:', err));
+        }
+    </script>
 
     <script>
         tailwind.config = {
@@ -501,6 +509,28 @@
                     }
                 };
                 fetchProducts();
+            }, []);
+
+            // SSE: sincronização de estoque em tempo real
+            // Quando outra aba (PDV) ou o e-commerce faz uma venda,
+            // o servidor emite stock-update e o estado local é atualizado sem reload.
+            useEffect(() => {
+                let es;
+                try {
+                    es = new EventSource('/api/sse/stock');
+                    es.addEventListener('stock-update', (e) => {
+                        const { items } = JSON.parse(e.data);
+                        setProducts(prev =>
+                            prev.map(p => {
+                                const delta = items.find(i => i.product_id === p.id);
+                                if (!delta) return p;
+                                return { ...p, stock: Math.max(0, (p.stock || 0) - delta.quantity) };
+                            })
+                        );
+                    });
+                    es.onerror = () => { /* reconexão automática pelo browser */ };
+                } catch (_) { /* SSE não disponível offline */ }
+                return () => es && es.close();
             }, []);
             const [sales, setSales] = useState([]);
             const [isLoadingSales, setIsLoadingSales] = useState(false);
