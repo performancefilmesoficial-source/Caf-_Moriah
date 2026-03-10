@@ -18,12 +18,12 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Service Worker: cache offline + fila de vendas -->
+    <!-- Remove qualquer Service Worker antigo que possa estar causando loops -->
     <script>
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js', { scope: '/' })
-                .then(reg => console.log('[SW] Registrado:', reg.scope))
-                .catch(err => console.warn('[SW] Falha no registro:', err));
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+                regs.forEach(function(r) { r.unregister(); });
+            });
         }
     </script>
 
