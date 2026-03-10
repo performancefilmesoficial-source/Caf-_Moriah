@@ -28,6 +28,10 @@ const settingsRoutes  = require('./routes/settings');
 
 const app = express();
 
+// ─── Trust Proxy (obrigatório atrás do reverse proxy do Coolify/nginx) ────────
+// Sem isso, express-rate-limit lança ValidationError em cada request
+app.set('trust proxy', 1);
+
 // ─── Segurança: Helmet (headers HTTP seguros) ─────────────────────────────────
 // content-security-policy desabilitado: front-end usa CDN externo (React, Tailwind, Babel)
 app.use(helmet({ contentSecurityPolicy: false }));
