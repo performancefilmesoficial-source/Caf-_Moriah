@@ -624,17 +624,33 @@
                 const paidId = params.get('ip_paid');
                 const tapResult = params.get('tap_result');
                 const saleId = params.get('sale_id');
+                const targetId = saleId || paidId;
 
-                if (paidId || (tapResult && saleId)) {
+                if (targetId) {
                     window.history.replaceState({}, '', window.location.pathname);
                     const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
                     localStorage.removeItem('ip_pending');
-                    setCart([]);
-                    setDiscount(0);
-                    if (pending) {
-                        setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
-                    }
-                    setIsSuccessModalOpen(true);
+
+                    apiFetch(`/api/pdv/infinitepay/status/${targetId}`)
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.paid) {
+                                setCart([]);
+                                setDiscount(0);
+                                if (pending) {
+                                    setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
+                                }
+                                setIsSuccessModalOpen(true);
+                            } else {
+                                alert('Pagamento cancelado ou não aprovado na maquininha.');
+                                if (pending && pending.cart) {
+                                    setCart(pending.cart);
+                                }
+                            }
+                        })
+                        .catch(() => {
+                            alert('Erro ao verificar pagamento. Consulte as Vendas.');
+                        });
                 }
             }, []);
 
@@ -838,6 +854,9 @@
                     const afForceDeeplink = 'true';
 
                     const checkout_url = `infinitepaydash://infinitetap-app?amount=${amountCents}&payment_method=${infinitePayMethod}&installments=${installments}&order_id=${orderId}&result_url=${resultUrl}&app_client_referrer=${appClientReferrer}&af_force_deeplink=${afForceDeeplink}`;
+
+                    // Salva o carrinho provisoriamente para caso o iOS/Android recarregue a página ao voltar do deep link
+                    localStorage.setItem('ip_pending', JSON.stringify({ total, method: methodLabel, cart }));
 
                     // Em vez de navegar direto (bloqueado pelo android em alguns casos e abre web), 
                     // mostramos um modal onde o operador tem que clicar explicitamente para abrir a maquininha
