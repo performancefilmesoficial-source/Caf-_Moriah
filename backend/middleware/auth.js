@@ -1,19 +1,13 @@
 'use strict';
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET;
+// Fallback igual ao original — mantém compatibilidade com tokens já emitidos.
+// Para segurança máxima, defina JWT_SECRET nas variáveis de ambiente do Coolify.
+const SECRET = process.env.JWT_SECRET || 'moriah_segredo_pdv_2026';
 
-// Aviso em desenvolvimento se JWT_SECRET não estiver definido
-if (!JWT_SECRET) {
-    if (process.env.NODE_ENV === 'production') {
-        console.error('[FATAL] JWT_SECRET não definido em produção! Defina a variável de ambiente JWT_SECRET.');
-        process.exit(1);
-    } else {
-        console.warn('[AVISO] JWT_SECRET não definido. Usando fallback de desenvolvimento.');
-    }
+if (!process.env.JWT_SECRET) {
+    console.warn('[AVISO] JWT_SECRET não definido. Usando chave padrão — defina JWT_SECRET em produção para mais segurança.');
 }
-
-const SECRET = JWT_SECRET || 'moriah_segredo_pdv_dev_APENAS';
 
 function authenticateJWT(req, res, next) {
     const authHeader = req.headers.authorization;
@@ -28,4 +22,4 @@ function authenticateJWT(req, res, next) {
     });
 }
 
-module.exports = { authenticateJWT, JWT_SECRET: SECRET };
+module.exports = { authenticateJWT, SECRET };

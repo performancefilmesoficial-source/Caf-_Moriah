@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { getDb } = require('../config/database');
-const { authenticateJWT, JWT_SECRET } = require('../middleware/auth');
+const { authenticateJWT, SECRET } = require('../middleware/auth');
 const { loginLimiter } = require('../middleware/rateLimiters');
 
 const router = express.Router();
@@ -37,7 +37,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
 
         const token = jwt.sign(
             { id: u.id, username: u.username, role: u.role },
-            JWT_SECRET,
+            SECRET,
             { expiresIn: '12h' }
         );
 
