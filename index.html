@@ -21,8 +21,8 @@
     <!-- Remove qualquer Service Worker antigo que possa estar causando loops -->
     <script>
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(regs) {
-                regs.forEach(function(r) { r.unregister(); });
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+                regs.forEach(function (r) { r.unregister(); });
             });
         }
     </script>
@@ -781,7 +781,7 @@
             const handleInfinitePay = async (cardType) => {
                 const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
                 const total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
-                setShowMachineSubmenu(false);
+
 
                 try {
                     const res = await apiFetch('/api/pdv/infinitepay/charge', {
