@@ -786,23 +786,25 @@
             const handleInfinitePay = async (cardType) => {
                 const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
                 let total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
-                // Repasse obrigatório de taxa InfinitePay padrão (Aproximação)
+                // Repasse obrigatório de taxa InfinitePay padrão (1 Dia Útil - Até 20k)
                 // Usando cálculo "Por dentro" para o cliente pagar a taxa exata e o lojista receber o "total" bruto
                 // Fórmula: Valor a Cobrar = Valor Liquido / (1 - Taxa)
                 let appliedRate = 0;
                 let finalInstallments = '1';
 
                 if (cardType === 'debit') {
-                    appliedRate = 0.0199; // 1.99%
+                    appliedRate = 0.0137; // 1.37% (Débito - 1 Dia Útil)
                 } else if (cardType === 'credit') {
                     finalInstallments = String(infiniteInstallments);
-                    // Tabela de juros padrão InfinitePay (Tap to Pay - Receber na Hora)
+                    // Tabela de juros InfinitePay (Tap to Pay - 1 Dia Útil - Faturamento até 20k)
                     const creditRates = {
-                        1: 0.0319, 2: 0.0549, 3: 0.0649, 4: 0.0749,
-                        5: 0.0849, 6: 0.0949, 7: 0.1049, 8: 0.1149,
-                        9: 0.1249, 10: 0.1349, 11: 0.1449, 12: 0.1549
+                        1: 0.0315, // 3.15% à vista
+                        2: 0.0539, 3: 0.0612, 4: 0.0685,
+                        5: 0.0757, 6: 0.0828, 7: 0.0899,
+                        8: 0.0969, 9: 0.1038, 10: 0.1106,
+                        11: 0.1174, 12: 0.1240
                     };
-                    appliedRate = creditRates[infiniteInstallments] || 0.0319;
+                    appliedRate = creditRates[infiniteInstallments] || 0.0315;
                 }
                 total = parseFloat((total / (1 - appliedRate)).toFixed(2));
 
