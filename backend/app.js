@@ -104,7 +104,11 @@ app.use('/ecommerce', ecommerceStatic);
 app.use((req, res, next) => {
     if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
     const host = req.hostname || '';
+    // app.cafemoriah.com.br → PDV admin
+    if (host === 'app.cafemoriah.com.br') return pdvStatic(req, res, next);
+    // cafemoriah.com.br e www.cafemoriah.com.br → e-commerce
     if (host.includes('cafemoriah.com.br')) return ecommerceStatic(req, res, next);
+    // localhost / dev
     return pdvStatic(req, res, next);
 });
 
