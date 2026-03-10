@@ -1847,12 +1847,6 @@
                                 <p class="text-sm font-black text-stone-900 truncate">{currentUser.name || currentUser.username}</p>
                                 <button onClick={() => { localStorage.removeItem('moriah_jwt'); setCurrentUser(null); }} class="text-[10px] text-moriah-brown font-bold mt-2 hover:underline">Sair do Sistema</button>
                             </div>
-                            <div class="p-4 bg-moriah-brown/5 rounded-2xl border border-moriah-brown/10">
-                                <p class="text-[10px] font-bold text-moriah-brown mb-1 uppercase tracking-wider">Status do Sistema</p>
-                                <div class="flex items-center gap-2">
-                                    <div class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div><span class="text-xs font-medium text-stone-600">Operando Localmente</span>
-                                </div>
-                            </div>
                         </div>
                     </aside>
                     <header class="md:hidden sticky top-0 z-40 bg-white border-b border-stone-100 px-4 py-3 flex items-center justify-between no-print w-full">
