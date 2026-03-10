@@ -42,9 +42,9 @@ async function initTables(db, mysql) {
 
     await db.run(`CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY ${autoInc},
-        name TEXT,
-        phone TEXT NOT NULL UNIQUE,
-        email TEXT,
+        name VARCHAR(255),
+        phone VARCHAR(50) NOT NULL UNIQUE,
+        email VARCHAR(255),
         last_message_at DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
