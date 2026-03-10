@@ -622,10 +622,13 @@
                 const paidId = params.get('ip_paid');
                 if (paidId) {
                     window.history.replaceState({}, '', window.location.pathname);
-                    clearInterval(ipPollingRef.current);
-                    setIpWaiting(null);
+                    const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
+                    localStorage.removeItem('ip_pending');
                     setCart([]);
                     setDiscount(0);
+                    if (pending) {
+                        setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
+                    }
                     setIsSuccessModalOpen(true);
                 }
             }, []);
@@ -800,33 +803,14 @@
                     const { sale_id, checkout_url } = await res.json();
                     const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
 
-                    // Atualiza estoque local imediatamente
-                    setProducts(curr => curr.map(p => {
-                        const qty = cart.filter(ci => ci.id === p.id).reduce((s, ci) => s + ci.quantity, 0);
-                        return qty > 0 ? { ...p, stock: p.stock - qty } : p;
+                    // Salva dados no localStorage para restaurar ao voltar do app
+                    localStorage.setItem('ip_pending', JSON.stringify({
+                        sale_id, total, method: methodLabel, cart: cart
                     }));
 
-                    // Abre o checkout InfinitePay (abre o app se instalado via Universal Links)
-                    window.open(checkout_url, '_blank');
-
-                    // Mostra modal de espera e inicia polling
-                    setIpWaiting({ sale_id, method: methodLabel, total });
-                    setIsCheckoutOpen(false);
-
-                    ipPollingRef.current = setInterval(async () => {
-                        try {
-                            const statusRes = await apiFetch(`/api/pdv/infinitepay/status/${sale_id}`);
-                            const data = await statusRes.json();
-                            if (data.paid) {
-                                clearInterval(ipPollingRef.current);
-                                setIpWaiting(null);
-                                setCart([]);
-                                setDiscount(0);
-                                setLastSale({ total, method: methodLabel, items: cart });
-                                setIsSuccessModalOpen(true);
-                            }
-                        } catch (_) {}
-                    }, 3000);
+                    // Navega na mesma aba — único jeito garantido de abrir o app InfinitePay no celular
+                    // (window.open é bloqueado por popup blocker em chamadas async)
+                    window.location.href = checkout_url;
 
                 } catch (error) {
                     alert('Falha de conexão. Verifique sua rede.');
