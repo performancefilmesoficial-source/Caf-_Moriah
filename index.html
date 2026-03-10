@@ -493,10 +493,14 @@
         };
 
         const App = () => {
+            const [currentUser, setCurrentUser] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('moriah_current_user')); } catch { return null; }
+            });
             const [view, setView] = useState('pos');
             const [products, setProducts] = useState([]);
-            // Carrega produtos da API no Mount
+            // Carrega produtos da API quando o usuário logar
             useEffect(() => {
+                if (!currentUser) return; // Só busca se estiver logado
                 const fetchProducts = async () => {
                     try {
                         const res = await apiFetch('/api/products');
@@ -509,7 +513,7 @@
                     }
                 };
                 fetchProducts();
-            }, []);
+            }, [currentUser]);
 
             // SSE: sincronização de estoque em tempo real
             // Quando outra aba (PDV) ou o e-commerce faz uma venda,
@@ -599,10 +603,6 @@
 
             // Usuários vêm do banco via API — não do localStorage
             const [users, setUsers] = useState([]);
-
-            const [currentUser, setCurrentUser] = useState(() => {
-                try { return JSON.parse(localStorage.getItem('moriah_current_user')); } catch { return null; }
-            });
 
             // Opção de repassar taxa do cartão para o cliente
             const [passOnFee, setPassOnFee] = useState(false);
