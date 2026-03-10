@@ -616,11 +616,14 @@
             }, [currentUser]);
             useEffect(() => { localStorage.setItem('moriah_customers', JSON.stringify(customers)); }, [customers]);
 
-            // Detecta retorno do InfinitePay (?ip_paid=sale_id na URL)
+            // Detecta retorno do InfinitePay (?ip_paid=sale_id na URL) ou retorno nativo do app (?tap_result=1&sale_id=...)
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 const paidId = params.get('ip_paid');
-                if (paidId) {
+                const tapResult = params.get('tap_result');
+                const saleId = params.get('sale_id');
+
+                if (paidId || (tapResult && saleId)) {
                     window.history.replaceState({}, '', window.location.pathname);
                     const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
                     localStorage.removeItem('ip_pending');
@@ -784,7 +787,7 @@
 
 
                 try {
-                    const res = await apiFetch('/api/pdv/infinitepay/charge', {
+                    const res = await apiFetch('/api/pdv/infinitepay/tap', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -800,8 +803,19 @@
                         return;
                     }
 
-                    const { sale_id, checkout_url } = await res.json();
+                    const { sale_id } = await res.json();
                     const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
+
+                    // Parâmetros do Deep Link nativo (InfiniteTap) repassados pela InfinitePay
+                    const amountCents = Math.round(total * 100);
+                    const infinitePayMethod = cardType; // 'credit' ou 'debit'
+                    const installments = '1';
+                    const orderId = `moriah-pdv-${saleId}`;
+                    const resultUrl = encodeURIComponent(`${window.location.origin}/?tap_result=1&sale_id=${sale_id}`);
+                    const appClientReferrer = 'MoriahPDV';
+                    const afForceDeeplink = 'true';
+
+                    const checkout_url = `infinitepaydash://infinitetap-app?amount=${amountCents}&payment_method=${infinitePayMethod}&installments=${installments}&order_id=${orderId}&result_url=${resultUrl}&app_client_referrer=${appClientReferrer}&af_force_deeplink=${afForceDeeplink}`;
 
                     // Em vez de navegar direto (bloqueado pelo android em alguns casos e abre web), 
                     // mostramos um modal onde o operador tem que clicar explicitamente para abrir a maquininha

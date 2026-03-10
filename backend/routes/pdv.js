@@ -139,4 +139,44 @@ router.put('/sales/:id/confirm', async (req, res, next) => {
     } catch (err) { next(err); }
 });
 
+// POST /api/pdv/infinitepay/tap (Tap to Pay nativo)
+router.post('/infinitepay/tap', async (req, res, next) => {
+    const { total, items, cardType } = req.body;
+    if (!total || total <= 0) return res.status(400).json({ error: 'Valor inválido.' });
+    if (!items || !items.length) return res.status(400).json({ error: 'Carrinho vazio.' });
+
+    try {
+        const db = getDb();
+
+        // Validar estoque
+        for (const item of items) {
+            const [rows] = await db.query('SELECT stock, name FROM products WHERE id = ?', [item.id]);
+            if (!rows.length || rows[0].stock < item.quantity)
+                return res.status(400).json({ error: `Estoque insuficiente: ${rows[0]?.name || 'Produto ' + item.id}` });
+        }
+
+        // Criar venda pendente no banco
+        const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
+        const saleId = await db.transaction(async (tx) => {
+            const result = await tx.run(
+                'INSERT INTO sales (total, method, origin, status, customer_name) VALUES (?, ?, ?, ?, ?)',
+                [parseFloat(total), methodLabel, 'Físico (Tap)', 'Aguardando Pagamento', 'Cliente PDV']
+            );
+            const sId = result[0].insertId;
+            for (const item of items) {
+                await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
+                    [sId, item.id, item.name, item.quantity, item.price]);
+                await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+            }
+            return sId;
+        });
+
+        broadcastStockUpdate(items.map(i => ({ product_id: i.id, quantity: i.quantity })));
+
+        // Retorna apenas os dados da venda criados para o frontend gerar o Deeplink
+        res.json({ success: true, sale_id: saleId, total: parseFloat(total) });
+
+    } catch (err) { next(err); }
+});
+
 module.exports = router;
