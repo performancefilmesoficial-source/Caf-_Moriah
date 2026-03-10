@@ -601,11 +601,7 @@
                     .catch(err => console.error("Erro config site:", err));
             }, []);
 
-            // Usuários vêm do banco via API — não do localStorage
             const [users, setUsers] = useState([]);
-
-            // Opção de repassar taxa do cartão para o cliente
-            const [passOnFee, setPassOnFee] = useState(false);
 
             const [customers, setCustomers] = useState(() => {
                 const saved = localStorage.getItem('moriah_customers');
@@ -787,19 +783,16 @@
             const handleInfinitePay = async (cardType) => {
                 const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
                 let total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
-
-                // Repasse de taxa InfinitePay padrão (Aproximação)
+                // Repasse obrigatório de taxa InfinitePay padrão (Aproximação)
                 // Usando cálculo "Por dentro" para o cliente pagar a taxa exata e o lojista receber o "total" bruto
                 // Fórmula: Valor a Cobrar = Valor Liquido / (1 - Taxa)
                 let appliedRate = 0;
-                if (passOnFee) {
-                    if (cardType === 'debit') {
-                        appliedRate = 0.0199; // 1.99%
-                    } else if (cardType === 'credit') {
-                        appliedRate = 0.0319; // 3.19% (crédito à vista)
-                    }
-                    total = parseFloat((total / (1 - appliedRate)).toFixed(2));
+                if (cardType === 'debit') {
+                    appliedRate = 0.0199; // 1.99%
+                } else if (cardType === 'credit') {
+                    appliedRate = 0.0319; // 3.19% (crédito à vista)
                 }
+                total = parseFloat((total / (1 - appliedRate)).toFixed(2));
 
                 try {
                     const res = await apiFetch('/api/pdv/infinitepay/tap', {
@@ -1180,15 +1173,6 @@
                                                 </div>
                                                 <div class="flex justify-between text-xl font-black text-moriah-brown pt-3 border-t border-dashed border-stone-200">
                                                     <span>Total Final</span><span>R$ {(cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0) * (1 - discount / 100)).toFixed(2)}</span>
-                                                </div>
-                                                <div class="pt-2">
-                                                    <label class="flex items-center gap-2 cursor-pointer group">
-                                                        <div class="relative flex items-center justify-center w-5 h-5 rounded border-2 border-stone-300 bg-white group-hover:border-moriah-brown transition-colors">
-                                                            <input type="checkbox" checked={passOnFee} onChange={(e) => setPassOnFee(e.target.checked)} class="peer absolute opacity-0 w-full h-full cursor-pointer" />
-                                                            <LucideIcon name="check" className="w-3.5 h-3.5 text-white peer-checked:text-moriah-brown drop-shadow-sm opacity-0 peer-checked:opacity-100 transition-opacity" />
-                                                        </div>
-                                                        <span class="text-sm text-stone-600 font-medium group-hover:text-stone-900 transition-colors">Em Cartões, Repassar Taxa InfinitePay (1,99% a 3,19%)</span>
-                                                    </label>
                                                 </div>
                                             </div>
                                             <div class="space-y-2">
