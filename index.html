@@ -1319,15 +1319,28 @@
                                                     {hasTwoGrinds && <span class="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full shrink-0 font-bold">☕</span>}
                                                 </div>
                                                 <div class="flex justify-between items-center mt-1 w-full">
-                                                    <span class="text-moriah-brown font-bold text-base">R$ {parseFloat(p.price).toFixed(2)}</span>
-                                                    <div class="flex flex-col items-end gap-1">
-                                                        {(hasTwoGrinds || p.stock_grao > 0 || p.stock_moido > 0) ? (
+                                                    <div class="flex flex-col">
+                                                        {(p.category === 'Café' && parseFloat(p.price_moido) > 0 && parseFloat(p.price) !== parseFloat(p.price_moido)) ? (
                                                             <>
-                                                                <span class="text-[9px] px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-md font-bold">Grão: {p.stock_grao || 0}</span>
-                                                                <span class="text-[9px] px-1.5 py-0.5 bg-stone-50 text-stone-600 rounded-md font-bold">Pó: {p.stock_moido || 0}</span>
+                                                                <span class="text-moriah-brown font-bold text-xs">G: R$ {parseFloat(p.price).toFixed(2)}</span>
+                                                                <span class="text-stone-600 font-bold text-xs">P: R$ {parseFloat(p.price_moido).toFixed(2)}</span>
                                                             </>
                                                         ) : (
-                                                            <span class={`text-[11px] px-2.5 py-1 rounded-full font-black ${p.stock < p.minStock ? 'bg-red-500 text-white ring-4 ring-red-500/10' : 'bg-emerald-50 text-emerald-700 ring-4 ring-emerald-500/10'}`}>Estoque: {p.stock} {p.stock <= 0 ? '(ESGOTADO)' : ''}</span>
+                                                            <span class="text-moriah-brown font-bold text-base">R$ {parseFloat(p.price || p.price_moido || 0).toFixed(2)}</span>
+                                                        )}
+                                                    </div>
+                                                    <div class="flex flex-col items-end gap-1">
+                                                        {p.category === 'Café' ? (
+                                                            <div class="flex flex-col gap-0.5">
+                                                                {(p.stock_grao > 0 || p.stock_moido === 0) && (
+                                                                    <span class={`text-[9px] px-1.5 py-0.5 rounded-md font-bold ${p.stock_grao < 5 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>G: {p.stock_grao || 0}</span>
+                                                                )}
+                                                                {(p.stock_moido > 0 || p.stock_grao === 0) && (
+                                                                    <span class={`text-[9px] px-1.5 py-0.5 rounded-md font-bold ${p.stock_moido < 5 ? 'bg-red-50 text-red-600' : 'bg-stone-100 text-stone-600'}`}>P: {p.stock_moido || 0}</span>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span class={`text-[11px] px-2.5 py-1 rounded-full font-black ${p.stock < p.minStock ? 'bg-red-500 text-white ring-4 ring-red-500/10' : 'bg-emerald-50 text-emerald-700 ring-4 ring-emerald-500/10'}`}>Estoque: {p.stock}</span>
                                                         )}
                                                     </div>
                                                 </div>
@@ -1645,7 +1658,19 @@
                                                         <span class={`font-black px-1.5 py-0.5 rounded text-[10px] ${p.stock < p.minStock ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>Estoque: {p.stock}</span>
                                                     )}
                                                 </p>
-                                                <p class="text-sm font-bold text-moriah-brown">R$ {parseFloat(p.price).toFixed(2)}</p>
+                                                <div class="flex items-center gap-2">
+                                                    {p.category === 'Café' ? (
+                                                        <>
+                                                            {parseFloat(p.price_moido) > 0 && parseFloat(p.price) !== parseFloat(p.price_moido) ? (
+                                                                <p class="text-xs font-bold text-stone-700">G: {fmtR(p.price)} | P: {fmtR(p.price_moido)}</p>
+                                                            ) : (
+                                                                <p class="text-sm font-bold text-moriah-brown">{fmtR(p.price || p.price_moido)}</p>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <p class="text-sm font-bold text-moriah-brown">{fmtR(p.price)}</p>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div class="flex gap-1 shrink-0">
                                                 <button onClick={() => { setEditingProduct(p); setView('edit_product'); }} class="p-2.5 rounded-xl bg-stone-50 text-stone-500 active:bg-moriah-brown active:text-white transition-colors"><LucideIcon name="pencil" className="w-4 h-4" /></button>
