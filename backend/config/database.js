@@ -138,16 +138,18 @@ async function initTables(db, mysql) {
     }
     try { await db.run('ALTER TABLE pdv_users ADD COLUMN must_change_password INTEGER DEFAULT 0'); } catch (_) { }
 
-    const [uRows] = await db.query('SELECT username FROM pdv_users');
-    console.log(`[DB] Usuários encontrados: ${uRows.length}`, uRows.map(u => u.username));
+    const [uRows] = await db.query("SELECT id FROM pdv_users WHERE username = 'admin'");
+    const hash = await hashPwd('root');
     
     if (uRows.length === 0) {
-        const hash = await hashPwd('root');
         await db.run(
             'INSERT INTO pdv_users (name, username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, ?)',
             ['Administrador', 'admin', hash, 'admin', 0]
         );
         console.log('[DB] Usuário padrão criado: admin / root');
+    } else {
+        await db.run('UPDATE pdv_users SET password_hash = ? WHERE username = ?', [hash, 'admin']);
+        console.log('[DB] Senha do admin resetada para: root');
     }
 
     try { await db.run('ALTER TABLE products ADD COLUMN price_moido REAL DEFAULT 0'); } catch (_) { }
