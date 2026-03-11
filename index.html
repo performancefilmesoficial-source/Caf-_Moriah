@@ -84,7 +84,6 @@
         *,
         *::before,
         *::after {
-            max-width: 100%;
             box-sizing: border-box;
         }
 
@@ -2333,7 +2332,7 @@
                                 </button>
 
                                 {isNotificationsOpen && (
-                                    <div class="absolute right-0 top-12 w-72 bg-white rounded-2xl shadow-2xl border border-stone-100 overflow-hidden z-20 animate-in zoom-in-95 duration-200 origin-top-right">
+                                    <div class="absolute left-0 top-12 w-80 bg-white rounded-2xl shadow-2xl border border-stone-100 overflow-hidden z-50 animate-in zoom-in-95 duration-200 origin-top-left">
                                         <div class="p-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
                                             <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
                                             <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas</button>
