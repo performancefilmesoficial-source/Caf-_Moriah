@@ -72,13 +72,50 @@ app.post('/api/upload', uploadMiddleware.single('image'), (req, res) => {
     res.json({ imageUrl: `data:${mime};base64,${base64}` });
 });
 
-// ─── Rota IA (gerador de SKU/descrição — mock) ───────────────────────────────
-app.post('/api/generate-ai', (req, res) => {
-    const { productName } = req.body;
+// ─── Rota IA (gerador de SKU/descrição via Gemini) ───────────────────────────
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+app.post('/api/generate-ai', async (req, res) => {
+    const { productName, field } = req.body;
     if (!productName) return res.status(400).json({ error: 'Nome do produto não informado.' });
-    const sku = `MORIAH-${productName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase()}-${Math.floor(Math.random() * 1000)}`;
-    const description = `Descubra a experiência sensorial única de provar o **${productName}**. Cultivado nas melhores fazendas e torrado artesanalmente para extrair notas surpreendentes. Ideal para seus momentos de pausa ou para impressionar depois de um bom almoço.`;
-    setTimeout(() => res.json({ sku, description }), 1200);
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        return res.status(500).json({ error: 'Configuração de IA Pendente: Por favor, configure a GEMINI_API_KEY nas variáveis de ambiente do servidor.' });
+    }
+
+    try {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        let prompt = "";
+        if (field === 'name') {
+            prompt = `Sugira um nome comercial mais atraente e profissional para o produto: "${productName}". Retorne apenas o nome sugerido, sem explicações.`;
+        } else if (field === 'sku') {
+            prompt = `Gere um código SKU único e profissional para o produto: "${productName}". O SKU deve ter o prefixo MORIAH-, ser curto (ex: MORIAH-CAFE-INT) e em maiúsculas. Retorne apenas o código.`;
+        } else {
+            prompt = `Escreva uma descrição detalhada, vendedora e profissional para o site de e-commerce do produto: "${productName}". 
+            Destaque características como sabor, aroma e experiência (caso seja café) ou utilidade e qualidade (caso seja acessório). 
+            Use formatação Markdown leve (negrito para pontos chave). 
+            O público é exigente e aprecia cafés especiais.
+            Retorne apenas a descrição.`;
+        }
+
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text().trim();
+
+        const responseData = {
+            sku: field === 'sku' ? text : `MORIAH-${productName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase()}-${Math.floor(Math.random() * 100)}`,
+            description: field === 'description' || !field ? text : `Descubra a experiência sensorial de ${productName}.`,
+            name: field === 'name' ? text : productName
+        };
+
+        res.json(responseData);
+    } catch (error) {
+        console.error('Erro Gemini:', error);
+        res.status(500).json({ error: 'Falha ao processar IA: ' + (error.message || 'Erro no Gemini') });
+    }
 });
 
 // ─── Rotas da API ─────────────────────────────────────────────────────────────
