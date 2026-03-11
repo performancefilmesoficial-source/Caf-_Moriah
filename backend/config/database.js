@@ -138,8 +138,10 @@ async function initTables(db, mysql) {
     }
     try { await db.run('ALTER TABLE pdv_users ADD COLUMN must_change_password INTEGER DEFAULT 0'); } catch (_) { }
 
-    const [uRows] = await db.query('SELECT COUNT(*) as count FROM pdv_users');
-    if (uRows[0].count === 0) {
+    const [uRows] = await db.query('SELECT username FROM pdv_users');
+    console.log(`[DB] Usuários encontrados: ${uRows.length}`, uRows.map(u => u.username));
+    
+    if (uRows.length === 0) {
         const hash = await hashPwd('root');
         await db.run(
             'INSERT INTO pdv_users (name, username, password_hash, role, must_change_password) VALUES (?, ?, ?, ?, ?)',
