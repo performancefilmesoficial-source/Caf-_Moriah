@@ -1202,10 +1202,11 @@
 
             const renderView = (overrideView) => {
                 const currentView = overrideView || view;
+                const fmtR = v => `R$ ${parseFloat(v || 0).toFixed(2).replace('.', ',')}`;
+                const fmtDt = dt => { const d = new Date(dt); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); };
+
                 switch (currentView) {
                     case 'dashboard': {
-                        const fmtR = v => `R$ ${parseFloat(v || 0).toFixed(2).replace('.', ',')}`;
-                        const fmtDt = dt => { const d = new Date(dt); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); };
                         return (
                             <div class="space-y-4 animate-in fade-in duration-500">
                                 <h2 class="text-xl font-bold text-stone-900">Dashboard</h2>
