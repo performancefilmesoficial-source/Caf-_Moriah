@@ -31,12 +31,12 @@ router.get('/online', async (req, res, next) => {
 
 // POST /api/products
 router.post('/', authenticateJWT, async (req, res, next) => {
-    const { name, category, cost, price, price_moido, stock, stock_moido, stock_grao, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
+    const { name, category, cost, price, cost_moido, price_moido, stock, stock_moido, stock_grao, minStock, sku, image_url, description, weight_grams, weight_grams_moido, sell_online } = req.body;
     try {
         const db = getDb();
         const result = await db.run(
-            'INSERT INTO products (name, category, cost, price, price_moido, stock, stock_moido, stock_grao, minStock, sku, image_url, description, weight_grams, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, category, cost, price, price_moido || 0, stock, stock_moido || 0, stock_grao || 0, minStock, sku, image_url, description, weight_grams, sell_online]
+            'INSERT INTO products (name, category, cost, price, cost_moido, price_moido, stock, stock_moido, stock_grao, minStock, sku, image_url, description, weight_grams, weight_grams_moido, sell_online) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [name, category, cost || 0, price || 0, cost_moido || 0, price_moido || 0, stock || 0, stock_moido || 0, stock_grao || 0, minStock || 5, sku, image_url, description, weight_grams || 250, weight_grams_moido || 250, sell_online ?? 1]
         );
         res.status(201).json({ id: result[0].insertId, message: 'Produto cadastrado com sucesso!' });
     } catch (err) {
@@ -47,12 +47,12 @@ router.post('/', authenticateJWT, async (req, res, next) => {
 // PUT /api/products/:id
 router.put('/:id', authenticateJWT, async (req, res, next) => {
     const { id } = req.params;
-    const { name, category, cost, price, price_moido, stock, stock_moido, stock_grao, minStock, sku, image_url, description, weight_grams, sell_online } = req.body;
+    const { name, category, cost, price, cost_moido, price_moido, stock, stock_moido, stock_grao, minStock, sku, image_url, description, weight_grams, weight_grams_moido, sell_online } = req.body;
     try {
         const db = getDb();
         await db.run(
-            'UPDATE products SET name=?, category=?, cost=?, price=?, price_moido=?, stock=?, stock_moido=?, stock_grao=?, minStock=?, sku=?, image_url=?, description=?, weight_grams=?, sell_online=? WHERE id=?',
-            [name, category, cost, price, price_moido || 0, stock, stock_moido || 0, stock_grao || 0, minStock, sku, image_url, description, weight_grams, sell_online, id]
+            'UPDATE products SET name=?, category=?, cost=?, price=?, cost_moido=?, price_moido=?, stock=?, stock_moido=?, stock_grao=?, minStock=?, sku=?, image_url=?, description=?, weight_grams=?, weight_grams_moido=?, sell_online=? WHERE id=?',
+            [name, category, cost || 0, price || 0, cost_moido || 0, price_moido || 0, stock || 0, stock_moido || 0, stock_grao || 0, minStock || 5, sku, image_url, description, weight_grams || 250, weight_grams_moido || 250, sell_online ?? 1, id]
         );
         res.json({ message: 'Produto atualizado com sucesso!' });
     } catch (err) { next(err); }

@@ -237,7 +237,7 @@
                 ...editingProduct,
                 image_url: loadImages(editingProduct.image_url) // Agora image_url é sempre Array aqui dentro
             } : {
-                name: '', category: 'Café Grão', cost: '', price: '', price_moido: '', stock: '', minStock: '5',
+                name: '', category: 'Café', cost: '', price: '', price_moido: '', cost_moido: '', stock: '', stock_moido: '', stock_grao: '',
                 sku: '', image_url: [], description: '', weight_grams: 250, sell_online: 1
             });
             const [isGeneratingAI, setIsGeneratingAI] = React.useState(false);
@@ -327,16 +327,25 @@
                             const productData = {
                                 name: formData.name,
                                 category: formData.category,
-                                cost: parseFloat(formData.cost),
-                                price: parseFloat(formData.price),
-                                stock: parseInt(formData.stock),
-                                minStock: parseInt(formData.minStock),
+                                ...(formData.category === 'Café' ? {
+                                    cost: parseFloat(formData.cost) || 0,
+                                    cost_moido: parseFloat(formData.cost_moido) || 0,
+                                    price: parseFloat(formData.price) || 0,
+                                    price_moido: parseFloat(formData.price_moido) || 0,
+                                    stock_grao: parseInt(formData.stock_grao) || 0,
+                                    stock_moido: parseInt(formData.stock_moido) || 0,
+                                    weight_grams: parseInt(formData.weight_grams) || 250,
+                                } : {
+                                    cost: parseFloat(formData.cost) || 0,
+                                    price: parseFloat(formData.price) || 0,
+                                    stock: parseInt(formData.stock) || 0,
+                                    minStock: parseInt(formData.minStock) || 5,
+                                    weight_grams: parseInt(formData.weight_grams) || 250,
+                                }),
                                 sku: formData.sku,
                                 image_url: Array.isArray(formData.image_url) ? JSON.stringify(formData.image_url) : formData.image_url, // fallback seguro
                                 description: formData.description,
-                                weight_grams: parseInt(formData.weight_grams) || 250,
-                                sell_online: formData.sell_online,
-                                price_moido: parseFloat(formData.price_moido) || null
+                                sell_online: formData.sell_online
                             };
 
                             try {
@@ -444,56 +453,94 @@
                                 </div>
                                 <textarea name="description" value={formData.description} onChange={handleChange} rows="4" class="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-moriah-brown/50 outline-none leading-relaxed" placeholder="Descreva os sabores, origem e experiência do café... (Ou clique em Gerar com IA acima)"></textarea>
                             </div>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
-                                    <input type="number" step="0.01" name="cost" value={formData.cost} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" placeholder="Ex: 15.00" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-stone-500 mb-1 text-moriah-green font-bold">{(formData.category === 'Café Grão' || formData.category === 'Café Moído') ? 'Preço Grão (R$)' : 'Venda (R$)'}</label>
-                                    <input type="number" step="0.01" name="price" value={formData.price} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-emerald-200 bg-emerald-50 rounded-xl outline-none text-emerald-900 font-bold text-lg" placeholder="Ex: 45.00" />
-                                </div>
-                            </div>
-                            {(formData.category === 'Café Grão' || formData.category === 'Café Moído') && (
-                                <div>
-                                    <label class="block text-sm font-medium text-amber-700 mb-1 font-bold">Preço Pó/Moído (R$) <span class="text-stone-400 text-xs font-normal">— deixe vazio se não tiver variação</span></label>
-                                    <input type="number" step="0.01" name="price_moido" value={formData.price_moido || ''} onChange={handleChange} class="w-full px-4 py-2 border border-amber-200 bg-amber-50 rounded-xl outline-none text-amber-900 font-bold text-lg" placeholder="Ex: 40.00" />
-                                </div>
-                            )}
-                            <div class="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Geral</label>
-                                    <input type="number" name="stock" value={formData.stock} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-stone-500 mb-1">Estoque Mínimo</label>
-                                    <input type="number" name="minStock" value={formData.minStock} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                </div>
-                            </div>
+                            {formData.category === 'Café' ? (
+                                <div class="space-y-6 bg-stone-50 p-4 rounded-2xl border border-stone-200">
+                                    {/* Tamanho Único pro Café */}
+                                    <div>
+                                        <label class="block text-sm font-medium text-stone-500 mb-1">Tamanho da Embalagem</label>
+                                        <select name="weight_grams" value={formData.weight_grams ?? 250} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none font-bold text-stone-700">
+                                            <option value="250">250g</option>
+                                            <option value="500">500g</option>
+                                            <option value="1000">1kg (1000g)</option>
+                                        </select>
+                                    </div>
 
-                            {(formData.category === 'Café Grão' || formData.category === 'Café Moído') && (
-                                <div class="grid grid-cols-2 gap-4 border-t border-stone-100 pt-4">
-                                    <div class="bg-amber-50/50 p-3 rounded-2xl border border-amber-100">
-                                        <label class="block text-xs font-bold text-amber-800 uppercase tracking-wider mb-1">Estoque Grão</label>
-                                        <input type="number" name="stock_grao" value={formData.stock_grao || 0} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-amber-200 rounded-xl outline-none font-bold text-amber-900" />
+                                    {/* Café Moído */}
+                                    <div class="space-y-4 pt-4 border-t border-stone-200">
+                                        <h3 class="font-bold text-stone-700">Café Moído (Pó)</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
+                                                <input type="number" step="0.01" name="cost_moido" value={formData.cost_moido ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none" placeholder="Ex: 15.00" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-amber-700 mb-1 font-bold">Preço de Venda (R$)</label>
+                                                <input type="number" step="0.01" name="price_moido" value={formData.price_moido ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-amber-50 border border-amber-200 rounded-xl outline-none text-amber-900 font-bold" placeholder="Ex: 40.00" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque</label>
+                                                <div class="relative">
+                                                    <input type="number" name="stock_moido" value={formData.stock_moido ?? ''} onChange={handleChange} class={`w-full px-4 py-2 bg-white border rounded-xl outline-none font-bold ${Number(formData.stock_moido) < 5 && formData.stock_moido !== '' ? 'border-red-400 text-red-600 bg-red-50' : 'border-stone-200 text-stone-800'}`} />
+                                                    {Number(formData.stock_moido) < 5 && formData.stock_moido !== '' && <span class="absolute right-3 top-2.5 text-xs text-red-500 font-bold">Estoque Baixo</span>}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="bg-stone-50 p-3 rounded-2xl border border-stone-100">
-                                        <label class="block text-xs font-bold text-stone-600 uppercase tracking-wider mb-1">Estoque Moído (Pó)</label>
-                                        <input type="number" name="stock_moido" value={formData.stock_moido || 0} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none font-bold text-stone-800" />
+
+                                    {/* Café em Grãos */}
+                                    <div class="space-y-4 pt-4 border-t border-stone-200">
+                                        <h3 class="font-bold text-stone-700">Café em Grãos</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
+                                                <input type="number" step="0.01" name="cost" value={formData.cost ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none" placeholder="Ex: 15.00" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-emerald-700 mb-1 font-bold">Preço de Venda (R$)</label>
+                                                <input type="number" step="0.01" name="price" value={formData.price ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl outline-none text-emerald-900 font-bold" placeholder="Ex: 45.00" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque</label>
+                                                <div class="relative">
+                                                    <input type="number" name="stock_grao" value={formData.stock_grao ?? ''} onChange={handleChange} class={`w-full px-4 py-2 bg-white border rounded-xl outline-none font-bold ${Number(formData.stock_grao) < 5 && formData.stock_grao !== '' ? 'border-red-400 text-red-600 bg-red-50' : 'border-stone-200 text-stone-800'}`} />
+                                                    {Number(formData.stock_grao) < 5 && formData.stock_grao !== '' && <span class="absolute right-3 top-2.5 text-xs text-red-500 font-bold">Estoque Baixo</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div class="space-y-4 bg-stone-50 p-4 rounded-2xl border border-stone-200">
+                                    <h3 class="font-bold text-stone-700 border-b border-stone-200 pb-2">Informações do Produto</h3>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
+                                            <input type="number" step="0.01" name="cost" value={formData.cost ?? ''} onChange={handleChange} required class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none" placeholder="Ex: 15.00" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-emerald-700 mb-1 font-bold">Preço de Venda (R$)</label>
+                                            <input type="number" step="0.01" name="price" value={formData.price ?? ''} onChange={handleChange} required class="w-full px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl outline-none text-emerald-900 font-bold" placeholder="Ex: 45.00" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-stone-500 mb-1">Estoque</label>
+                                            <div class="relative">
+                                                <input type="number" name="stock" value={formData.stock ?? ''} onChange={handleChange} required class={`w-full px-4 py-2 bg-white border rounded-xl outline-none font-bold ${Number(formData.stock) < 5 && formData.stock !== '' ? 'border-red-400 text-red-600 bg-red-50' : 'border-stone-200 text-stone-800'}`} />
+                                                {Number(formData.stock) < 5 && formData.stock !== '' && <span class="absolute right-3 top-2.5 text-xs text-red-500 font-bold">Estoque Baixo</span>}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-stone-500 mb-1">Peso (Gramas)</label>
+                                            <input type="number" name="weight_grams" placeholder="Ex: 250" value={formData.weight_grams ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none" />
+                                        </div>
                                     </div>
                                 </div>
                             )}
-                            <div class="grid grid-cols-2 gap-4 border-t border-stone-100 pt-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-stone-500 mb-1">Peso (Gramas)</label>
-                                    <input type="number" name="weight_grams" placeholder="Ex: 250" value={formData.weight_grams} onChange={handleChange} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none" />
-                                </div>
-                                <div class="flex items-center mt-4 text-left">
-                                    <label class="flex items-center gap-3 cursor-pointer p-2 bg-stone-50 border border-stone-100 rounded-xl w-full">
-                                        <input type="checkbox" name="sell_online" checked={formData.sell_online === 1} onChange={handleChange} class="w-5 h-5 text-moriah-brown bg-white border-stone-300 rounded focus:ring-moriah-brown" />
-                                        <span class="text-sm font-bold text-stone-700">Vender no E-commerce? <br /><span class="text-[10px] font-normal text-stone-400">Ative para aparecer na loja online</span></span>
-                                    </label>
-                                </div>
+
+                            <div class="flex items-center mt-4 text-left">
+                                <label class="flex items-center gap-3 cursor-pointer p-2 bg-stone-50 border border-stone-100 rounded-xl w-full">
+                                    <input type="checkbox" name="sell_online" checked={formData.sell_online === 1} onChange={handleChange} class="w-5 h-5 text-moriah-brown bg-white border-stone-300 rounded focus:ring-moriah-brown" />
+                                    <span class="text-sm font-bold text-stone-700">Vender no E-commerce? <br /><span class="text-[10px] font-normal text-stone-400">Ative para aparecer na loja online</span></span>
+                                </label>
                             </div>
                             <div class="flex gap-4 pt-4">
                                 <button type="button" onClick={() => { setEditingProduct(null); setView('inventory'); }} class="flex-1 py-3 text-stone-500 font-bold hover:bg-stone-50 rounded-2xl transition-all border border-stone-200">Cancelar</button>
@@ -1255,7 +1302,7 @@
                                 </div>
                                 <div class="product-grid">
                                     {products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase())).map(p => {
-                                        const hasTwoGrinds = (p.category === 'Café Grão' || p.category === 'Café Moído') && parseFloat(p.price_moido) > 0;
+                                        const hasTwoGrinds = (p.category === 'Café') && parseFloat(p.price_moido) > 0;
                                         const handleTap = () => {
                                             if (p.stock <= 0) return;
                                             if (hasTwoGrinds) setGrindPickerProduct(p);
@@ -1589,7 +1636,7 @@
                                                 <p class="font-bold text-sm text-stone-900 truncate">{p.name}</p>
                                                 <p class="text-xs text-stone-400">
                                                     {p.category} ·
-                                                    {(p.category === 'Café Grão' || p.category === 'Café Moído' || p.stock_grao > 0 || p.stock_moido > 0) ? (
+                                                    {(p.category === 'Café' || p.stock_grao > 0 || p.stock_moido > 0) ? (
                                                         <span class="ml-1 space-x-1">
                                                             <span class="bg-amber-100 text-amber-700 px-1 rounded text-[10px]">G: {p.stock_grao || 0}</span>
                                                             <span class="bg-stone-100 text-stone-700 px-1 rounded text-[10px]">P: {p.stock_moido || 0}</span>
@@ -1624,7 +1671,7 @@
                                                     <td class="px-6 py-4"><p class="font-bold">{p.name}</p><p class="text-xs text-stone-400">{p.sku}</p></td>
                                                     <td class="px-6 py-4 hidden md:table-cell"><span class="px-2 py-1 bg-stone-100 rounded text-xs text-stone-600">{p.category}</span></td>
                                                     <td class="px-6 py-4">
-                                                        {(p.category === 'Café Grão' || p.category === 'Café Moído' || p.stock_grao > 0 || p.stock_moido > 0) ? (
+                                                        {(p.category === 'Café' || p.stock_grao > 0 || p.stock_moido > 0) ? (
                                                             <div class="flex flex-col gap-1">
                                                                 <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded w-max">G: {p.stock_grao || 0}</span>
                                                                 <span class="text-[10px] font-bold text-stone-700 bg-stone-50 px-2 py-0.5 rounded w-max">P: {p.stock_moido || 0}</span>

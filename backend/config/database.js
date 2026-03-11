@@ -151,6 +151,8 @@ async function initTables(db, mysql) {
     try { await db.run('ALTER TABLE products ADD COLUMN price_moido REAL DEFAULT 0'); } catch (_) { }
     try { await db.run('ALTER TABLE products ADD COLUMN stock_moido INTEGER DEFAULT 0'); } catch (_) { }
     try { await db.run('ALTER TABLE products ADD COLUMN stock_grao INTEGER DEFAULT 0'); } catch (_) { }
+    try { await db.run('ALTER TABLE products ADD COLUMN cost_moido REAL DEFAULT 0'); } catch (_) { }
+    try { await db.run('ALTER TABLE products ADD COLUMN weight_grams_moido INTEGER DEFAULT 250'); } catch (_) { }
 
     console.log('[DB] Inicialização concluída.');
 }
