@@ -1226,30 +1226,30 @@
                                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                                             <div class="bg-white rounded-2xl p-4 shadow-sm border border-stone-100">
                                                 <p class="text-[10px] text-stone-400 uppercase tracking-wider mb-1">Hoje</p>
-                                                <p class="text-lg font-bold text-emerald-600 truncate">{fmtR(dashData.revenue?.today)}</p>
+                                                <p class="text-lg font-bold text-emerald-600 truncate">{fmtR(dashData?.revenue?.today)}</p>
                                             </div>
                                             <div class="bg-white rounded-2xl p-4 shadow-sm border border-stone-100">
                                                 <p class="text-[10px] text-stone-400 uppercase tracking-wider mb-1">Este Mês</p>
-                                                <p class="text-lg font-bold text-moriah-brown truncate">{fmtR(dashData.revenue?.month)}</p>
+                                                <p class="text-lg font-bold text-moriah-brown truncate">{fmtR(dashData?.revenue?.month)}</p>
                                             </div>
                                             <div class="bg-white rounded-2xl p-4 shadow-sm border border-stone-100">
                                                 <p class="text-[10px] text-stone-400 uppercase tracking-wider mb-1">Aguardando</p>
-                                                <p class="text-lg font-bold text-amber-500">{dashData.pending?.count || 0} pedido{dashData.pending?.count !== 1 ? 's' : ''}</p>
-                                                <p class="text-[10px] text-stone-400 mt-0.5 truncate">{fmtR(dashData.pending?.total)}</p>
+                                                <p class="text-lg font-bold text-amber-500">{dashData?.pending?.count || 0} pedido{dashData?.pending?.count !== 1 ? 's' : ''}</p>
+                                                <p class="text-[10px] text-stone-400 mt-0.5 truncate">{fmtR(dashData?.pending?.total)}</p>
                                             </div>
                                             <div class="bg-white rounded-2xl p-4 shadow-sm border border-stone-100">
                                                 <p class="text-[10px] text-stone-400 uppercase tracking-wider mb-1">Estoque Baixo</p>
-                                                <p class="text-lg font-bold text-red-500">{(dashData.lowStock || []).length} produto{(dashData.lowStock || []).length !== 1 ? 's' : ''}</p>
+                                                <p class="text-lg font-bold text-red-500">{(dashData?.lowStock || []).length} produto{(dashData?.lowStock || []).length !== 1 ? 's' : ''}</p>
                                             </div>
                                         </div>
-                                        {(dashData.pending?.sales || []).length > 0 && (
+                                        {(dashData?.pending?.sales || []).length > 0 && (
                                             <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
                                                 <div class="px-4 py-3 border-b border-stone-100 flex items-center gap-2">
                                                     <LucideIcon name="clock" className="w-4 h-4 text-amber-500" />
                                                     <h3 class="font-bold text-sm text-stone-800">Aguardando Pagamento</h3>
                                                 </div>
                                                 <div class="divide-y divide-stone-50">
-                                                    {(dashData.pending?.sales || []).map(s => (
+                                                    {(dashData.pending.sales).map(s => (
                                                         <div key={s.id} class="px-4 py-3 flex items-center justify-between gap-2">
                                                             <div class="min-w-0">
                                                                 <p class="font-medium text-sm text-stone-800 truncate">{s.customer_name}</p>
@@ -1264,14 +1264,14 @@
                                                 </div>
                                             </div>
                                         )}
-                                        {(dashData.lowStock || []).length > 0 && (
+                                        {(dashData?.lowStock || []).length > 0 && (
                                             <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
                                                 <div class="px-4 py-3 border-b border-stone-100 flex items-center gap-2">
                                                     <LucideIcon name="alert-triangle" className="w-4 h-4 text-red-500" />
                                                     <h3 class="font-bold text-sm text-stone-800">Estoque Crítico</h3>
                                                 </div>
                                                 <div class="divide-y divide-stone-50">
-                                                    {(dashData.lowStock || []).map(p => (
+                                                    {(dashData.lowStock).map(p => (
                                                         <div key={p.id} class="px-4 py-3 flex items-center justify-between gap-2">
                                                             <div class="min-w-0">
                                                                 <p class="font-medium text-sm text-stone-800 truncate">{p.name}</p>
@@ -1285,14 +1285,14 @@
                                                 </div>
                                             </div>
                                         )}
-                                        {(dashData.recentSales || []).length > 0 && (
+                                        {(dashData?.recentSales || []).length > 0 && (
                                             <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
                                                 <div class="px-4 py-3 border-b border-stone-100 flex items-center gap-2">
                                                     <LucideIcon name="check-circle" className="w-4 h-4 text-emerald-500" />
                                                     <h3 class="font-bold text-sm text-stone-800">Últimas Vendas Pagas</h3>
                                                 </div>
                                                 <div class="divide-y divide-stone-50">
-                                                    {(dashData.recentSales || []).map(s => (
+                                                    {(dashData.recentSales).map(s => (
                                                         <div key={s.id} class="px-4 py-3 flex items-center justify-between gap-2">
                                                             <div class="min-w-0">
                                                                 <p class="font-medium text-sm text-stone-800 truncate">{s.customer_name || 'Cliente PDV'}</p>
@@ -2325,17 +2325,16 @@
                         <div class="flex items-center justify-between py-2 mb-2">
                             <img src={logoUrl} class="h-8 w-auto max-w-[150px] object-contain" />
                             <div class="relative">
-                                <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} class="p-2 text-stone-400 hover:text-stone-600 relative">
-                                    <LucideIcon name="bell" className="w-5 h-5" />
-                                    {notifications.filter(n => !n.read).length > 0 && (
-                                        <span class="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
-                                            {notifications.filter(n => !n.read).length}
-                                        </span>
-                                    )}
+                                <button onClick={(e) => { e.stopPropagation(); setIsNotificationsOpen(!isNotificationsOpen); }} class={`p-2 rounded-xl transition-all ${isNotificationsOpen ? 'bg-moriah-brown text-white shadow-lg' : 'bg-stone-50 text-stone-400 hover:text-moriah-brown'}`}>
+                                    <div class="relative">
+                                        <LucideIcon name="bell" className="w-5 h-5" />
+                                        {notifications.some(n => !n.read) && <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full"></span>}
+                                    </div>
                                 </button>
+
                                 {isNotificationsOpen && (
-                                    <div class="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-stone-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                        <div class="p-4 border-b border-stone-50 flex justify-between items-center bg-stone-50/50">
+                                    <div class="absolute right-0 top-12 w-72 bg-white rounded-2xl shadow-2xl border border-stone-100 overflow-hidden z-20 animate-in zoom-in-95 duration-200 origin-top-right">
+                                        <div class="p-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
                                             <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
                                             <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas</button>
                                         </div>
