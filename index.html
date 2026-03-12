@@ -932,6 +932,11 @@
                 const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
                 const total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
 
+                // Mensagem de confirmação solicitada pelo usuário
+                if (!confirm(`Confirmar finalização de venda no valor de R$ ${total.toFixed(2).replace('.', ',')} via ${method}?`)) {
+                    return;
+                }
+
                 if (method === 'PIX' && !isPixModalOpen) {
                     const payload = generatePixPayload(total);
                     setCurrentPixData({ payload, total });
@@ -1000,6 +1005,11 @@
                     appliedRate = creditRates[infiniteInstallments] || 0.0315;
                 }
                 total = parseFloat((total / (1 - appliedRate)).toFixed(2));
+
+                const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
+                if (!confirm(`Confirmar cobrança de R$ ${total.toFixed(2).replace('.', ',')} no ${methodLabel}?`)) {
+                    return;
+                }
 
                 try {
                     const res = await apiFetch('/api/pdv/infinitepay/tap', {

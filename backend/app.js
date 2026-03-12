@@ -90,27 +90,33 @@ app.post('/api/generate-ai', async (req, res) => {
 
         let prompt = "";
         if (field === 'name') {
-            prompt = `Sugira um nome comercial sofisticado, curto e luxuoso para o produto: "${productName}". 
-            O nome deve evocar sensações de exclusividade, grãos selecionados e tradição cafeeira premium. 
-            Retorne apenas o nome sugerido, sem aspas ou explicações.`;
+            prompt = `Sugira um nome comercial curto, memorável e extremamente luxuoso para o produto: "${productName}". 
+            O nome deve evocar exclusividade, curadoria de grãos selecionados e a sofisticação de uma boutique de cafés. 
+            Retorne apenas o nome, sem aspas.`;
         } else if (field === 'sku') {
-            prompt = `Gere um código SKU único e profissional para o produto: "${productName}". O SKU deve ter o prefixo MORIAH-, ser curto (ex: MORIAH-CAFE-INT) e em maiúsculas. Retorne apenas o código.`;
+            prompt = `Gere um código SKU profissional e limpo para: "${productName}". Prefixo MORIAH-, em maiúsculas, curto (ex: MORIAH-EST-01). Retorne apenas o código.`;
         } else if (field === 'hero_title') {
-            prompt = `Crie um título impactante e luxuoso para a página principal de um e-commerce de cafés especiais chamado Moriah. 
-            O título deve ser curto (máximo 10 palavras) e transmitir a sensação de que o café Moriah é um momento sagrado, exclusivo e sensorialmente rico. 
-            DICA: Use \n (ex: Seu momento MORIAH\nta te esperando) para quebras de linha estratégicas.
-            Retorne apenas o título.`;
+            prompt = `Crie um título principal impactante para um e-commerce de cafés ultra-premium chamado Moriah Café. 
+            O tom deve ser poético e sofisticado, apresentando o café como um ritual sagrado e uma experiência sensorial inesquecível.
+            Use \n para quebras de linha que criem um impacto visual (ex: Moriah Café\nOnde o grão vira ritual). 
+            Máximo 8 palavras. Retorne apenas o título.`;
         } else if (field === 'hero_text') {
-            prompt = `Escreva uma frase descritiva elegante e curta (máximo 20 palavras) para o cabeçalho de um site de cafés premium. 
-            Foque na origem, no sabor inconfundível e no cuidado artesanal da Moriah. 
-            Retorne apenas o texto.`;
+            prompt = `Escreva uma linha de apoio (subtítulo) elegante para o topo do site. 
+            Foque na alta pontuação dos grãos, no processo artesanal e na entrega de uma experiência que vai além do comum. 
+            Máximo 18 palavras. Retorne apenas o texto.`;
+        } else if (field === 'about_title') {
+            prompt = `Crie um título elegante para a seção 'Nossa História' da Moriah Café. 
+            Deve transmitir tradição, paixão pelo café e o compromisso com a excelência. 
+            Ex: A Arte de Cultivar o Extraordinário. Retorne apenas o título.`;
+        } else if (field === 'about_text_1' || field === 'about_text_2') {
+            prompt = `Escreva um parágrafo envolvente e sofisticado sobre a história e os valores do Moriah Café. 
+            Fale sobre a busca incessante pelo grão perfeito e o respeito ao produtor e ao terroir. 
+            Tom narrativo e luxuoso. Máximo 40 palavras. Retorne apenas o texto.`;
         } else {
-            prompt = `Escreva uma descrição detalhada, vendedora e extremamente profissional para o site de e-commerce do produto: "${productName}". 
-            Destaque características como notas sensoriais (chocolate, caramelo, frutas), aroma envolvente e a experiência de um café especial superior. 
-            Caso seja um acessório, foque no design, durabilidade e como ele eleva o preparo do café.
-            Use formatação Markdown leve (negrito para pontos chave). 
-            O público é exigente e aprecia cafés de altíssima qualidade.
-            Retorne apenas a descrição.`;
+            prompt = `Escreva uma descrição detalhada de "Storytelling" para o produto: "${productName}". 
+            O texto deve ser vendedora, mas elegante, explorando o terroir, as notas sensoriais (como frutas amarelas, chocolate belga, toffee) e o corpo do café. 
+            Se for um acessório, descreva-o como a ferramenta indispensável para o entusiasta que busca a perfeição. 
+            Use Markdown básico (negrito para termos chave). Retorne apenas a descrição.`;
         }
 
         const result = await model.generateContent(prompt);
