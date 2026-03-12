@@ -253,11 +253,12 @@
                     ...prev,
                     [name]: type === 'checkbox' ? (checked ? 1 : 0) : value
                 }));
-              const generateWithAI = async (field) => {
-                const isSite = field.startsWith('hero_');
-                const referenceValue = isSite ? 'Moriah' : formData.name;
+            };
 
-                if (!referenceValue && !isSite) {
+            const generateWithAI = async (field) => {
+                const referenceValue = formData.name;
+
+                if (!referenceValue) {
                     alert('Digite o nome do produto primeiro (ex: "Café Especial Torra Clara")');
                     return;
                 }
@@ -270,23 +271,17 @@
                     });
                     const data = await res.json();
                     if (res.ok) {
-                        if (isSite) {
-                            setSiteSettings(prev => ({ ...prev, [field]: data[field] || data.description }));
-                        } else {
-                            setFormData(prev => ({
-                                ...prev,
-                                name: field === 'name' ? data.name : prev.name,
-                                sku: field === 'sku' ? data.sku : prev.sku,
-                                description: field === 'description' ? data.description : prev.description
-                            }));
-                        }
+                        setFormData(prev => ({
+                            ...prev,
+                            name: field === 'name' ? data.name : prev.name,
+                            sku: field === 'sku' ? data.sku : prev.sku,
+                            description: field === 'description' ? data.description : prev.description
+                        }));
                     } else throw new Error(data.error);
                 } catch (e) {
                     alert('Erro na IA: ' + e.message);
                 }
                 setIsGeneratingAI(false);
-            };
-
             };
 
             const handleImageUpload = async (e) => {
@@ -713,6 +708,30 @@
             const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
             const [marketingQueue, setMarketingQueue] = useState([]);
             const [marketingMessage, setMarketingMessage] = useState('');
+            const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+
+            const generateWithAI = async (field) => {
+                const referenceValue = 'Moriah Café Especial'; 
+
+                setIsGeneratingAI(field);
+                try {
+                    const res = await apiFetch('/api/generate-ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ productName: referenceValue, field })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        setSiteSettings(prev => ({ 
+                            ...prev, 
+                            [field]: data[field] || data.description 
+                        }));
+                    } else throw new Error(data.error);
+                } catch (e) {
+                    alert('Erro na IA: ' + e.message);
+                }
+                setIsGeneratingAI(false);
+            };
 
             const addNotification = (title, message, type = 'info') => {
                 const newNotif = {

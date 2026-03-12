@@ -119,8 +119,9 @@ app.post('/api/generate-ai', async (req, res) => {
 
         const responseData = {
             sku: field === 'sku' ? text : `MORIAH-${productName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase()}-${Math.floor(Math.random() * 100)}`,
-            description: field === 'description' || !field ? text : `Descubra a experiência sensorial de ${productName}.`,
-            name: field === 'name' ? text : productName
+            description: (field === 'description' || !field || field.startsWith('hero_')) ? text : `Descubra a experiência sensorial de ${productName}.`,
+            name: field === 'name' ? text : productName,
+            [field]: text
         };
 
         res.json(responseData);
