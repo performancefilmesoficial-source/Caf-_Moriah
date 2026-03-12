@@ -1091,37 +1091,34 @@
                 }
             };
 
-            const sendWhatsAppReceipt = async () => {
-                if (!customerPhone || !lastSale) return;
+            const sendWhatsAppReceipt = () => {
+                if (!customerPhone) return;
                 const cleanPhone = customerPhone.replace(/\D/g, '');
+                
+                const message = `Olá! Obrigado por escolher o *Moriah Café Especial*. ☕
 
-                try {
-                    const res = await apiFetch('/api/pdv/send-receipt', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            phone: cleanPhone,
-                            sale_id: lastSale.id,
-                            message: null // O backend gera o padrão Moriah
-                        })
-                    });
+Aqui estão algumas dicas para você aproveitar ao máximo o seu café:
 
-                    if (res.ok) {
-                        alert('✅ Recibo enviado via WhatsApp!');
-                        setIsSuccessModalOpen(false);
-                        setCustomerPhone('');
-                        setView('pos');
-                    } else {
-                        const err = await res.json();
-                        alert('Falha no WhatsApp: ' + (err.error || 'Verifique a API'));
-                        // Fallback para link manual se a API falhar (opcional)
-                        const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(`Recibo Moriah: ${window.location.origin}/api/pdv/receipt/${lastSale.id}`)}`;
-                        window.open(url, '_blank');
-                    }
-                } catch (err) {
-                    console.error("Erro zap:", err);
-                    alert('Erro ao conectar com a API de WhatsApp.');
-                }
+*Sugestão de Preparo:*
+• Prefere um café mais forte? Use 8g para cada 100ml de água.
+• Gosta de equilíbrio? 6g para cada 100ml entrega um café médio.
+• Quer algo mais suave? 4-5g por 100ml é o ideal.
+
+*Dica Master:* Usando filtro de papel? Antes de colocar o pó, escalde com água quente. Isso ajuda a eliminar o gosto do papel e deixa o café mais puro.
+
+*Armazenamento:*
+Para conservar melhor seu café: Guarde em local seco e escuro, longe da umidade. Evite a geladeira e mantenha o café afastado de produtos com cheiro forte (como itens de limpeza).
+
+Siga-nos no Instagram para mais novidades: @cafemoriah__
+
+Qualquer dúvida, estamos à disposição!`;
+
+                const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`;
+                window.open(url, '_blank');
+                
+                setIsSuccessModalOpen(false);
+                setCustomerPhone('');
+                setView('pos');
             };
 
             const triggerMarketing = async () => {
