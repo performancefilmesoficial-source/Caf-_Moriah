@@ -1457,8 +1457,8 @@ Qualquer dúvida, estamos à disposição!`;
                                         return (
                                             <div key={p.id}
                                                 role="button"
-                                                onPointerUp={handleTap}
-                                                class={`flex flex-col bg-white rounded-[32px] shadow-sm border border-stone-100 active:ring-2 active:ring-moriah-brown/30 active:bg-stone-50 transition-all select-none overflow-hidden ${!hasStock ? 'opacity-40 pointer-events-none' : 'cursor-pointer'}`}
+                                                onClick={(e) => { e.stopPropagation(); handleTap(); }}
+                                                class={`flex flex-col bg-white rounded-[32px] shadow-sm border border-stone-100 active:ring-2 active:ring-moriah-brown/30 active:bg-stone-50 transition-all select-none overflow-hidden ${!hasStock ? 'opacity-40 pointer-events-none' : 'cursor-pointer hover:border-moriah-brown/30'}`}
                                             >
                                                 {/* Header do Card: Nome e Peso */}
                                                 <div class="p-4 pb-2">
@@ -2590,34 +2590,46 @@ Qualquer dúvida, estamos à disposição!`;
                                 </button>
 
                                 {isNotificationsOpen && (
-                                    <div class="absolute left-0 top-12 w-80 bg-white rounded-2xl shadow-2xl border border-stone-100 overflow-hidden z-50 animate-in zoom-in-95 duration-200 origin-top-left">
-                                        <div class="p-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
-                                            <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
-                                            <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas</button>
-                                        </div>
-                                        <div class="max-h-80 overflow-y-auto divide-y divide-stone-50">
-                                            {notifications.length > 0 ? notifications.map(n => (
-                                                <div key={n.id} class={`p-4 hover:bg-stone-50 transition-colors ${!n.read ? 'bg-moriah-brown/5' : ''}`}>
-                                                    <div class="flex gap-3">
-                                                        <div class={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : n.type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
-                                                        <div>
-                                                            <p class="text-xs font-bold text-stone-900">{n.title}</p>
-                                                            <p class="text-[11px] text-stone-500 leading-tight mt-0.5">{n.message}</p>
-                                                            <p class="text-[9px] text-stone-400 mt-1">{new Date(n.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                    <>
+                                        {/* Overlay para fechar ao clicar fora */}
+                                        <div 
+                                            class="fixed inset-0 z-40 bg-transparent cursor-default" 
+                                            onClick={() => setIsNotificationsOpen(false)}
+                                        ></div>
+                                        <div class="absolute left-0 top-12 w-80 bg-white rounded-2xl shadow-2xl border border-stone-100 overflow-hidden z-50 animate-in zoom-in-95 duration-200 origin-top-left">
+                                            <div class="p-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
+                                                <div class="flex items-center gap-2">
+                                                    <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
+                                                    <button onClick={() => setIsNotificationsOpen(false)} class="p-1 hover:bg-stone-200 rounded-lg text-stone-400 transition-colors">
+                                                        <LucideIcon name="x" className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas</button>
+                                            </div>
+                                            <div class="max-h-80 overflow-y-auto divide-y divide-stone-50">
+                                                {notifications.length > 0 ? notifications.map(n => (
+                                                    <div key={n.id} class={`p-4 hover:bg-stone-50 transition-colors ${!n.read ? 'bg-moriah-brown/5' : ''}`}>
+                                                        <div class="flex gap-3">
+                                                            <div class={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : n.type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                                                            <div>
+                                                                <p class="text-xs font-bold text-stone-900">{n.title}</p>
+                                                                <p class="text-[11px] text-stone-500 leading-tight mt-0.5">{n.message}</p>
+                                                                <p class="text-[9px] text-stone-400 mt-1">{new Date(n.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            )) : (
-                                                <div class="p-8 text-center text-stone-400">
-                                                    <LucideIcon name="bell-off" className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                                                    <p class="text-xs">Silêncio por aqui...</p>
-                                                </div>
+                                                )) : (
+                                                    <div class="p-8 text-center text-stone-400">
+                                                        <LucideIcon name="bell-off" className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                                        <p class="text-xs">Silêncio por aqui...</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {notifications.length > 0 && (
+                                                <button onClick={() => setNotifications([])} class="w-full py-3 text-center text-xs font-bold text-stone-400 hover:text-red-500 transition-colors bg-stone-50/50 border-t border-stone-50">Limpar histórico</button>
                                             )}
                                         </div>
-                                        {notifications.length > 0 && (
-                                            <button onClick={() => setNotifications([])} class="w-full py-3 text-center text-xs font-bold text-stone-400 hover:text-red-500 transition-colors bg-stone-50/50 border-t border-stone-50">Limpar histórico</button>
-                                        )}
-                                    </div>
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -2651,34 +2663,45 @@ Qualquer dúvida, estamos à disposição!`;
                                     )}
                                 </button>
                                 {isNotificationsOpen && (
-                                    <div class="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-stone-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                        <div class="p-4 border-b border-stone-50 flex justify-between items-center bg-stone-50/50">
-                                            <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
-                                            <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas como lidas</button>
-                                        </div>
-                                        <div class="max-h-80 overflow-y-auto divide-y divide-stone-50">
-                                            {notifications.length > 0 ? notifications.map(n => (
-                                                <div key={n.id} class={`p-4 hover:bg-stone-50 transition-colors ${!n.read ? 'bg-moriah-brown/5' : ''}`}>
-                                                    <div class="flex gap-3">
-                                                        <div class={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : n.type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
-                                                        <div>
-                                                            <p class="text-xs font-bold text-stone-900">{n.title}</p>
-                                                            <p class="text-[11px] text-stone-500 leading-tight mt-0.5">{n.message}</p>
-                                                            <p class="text-[9px] text-stone-400 mt-1">{new Date(n.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                    <>
+                                        <div 
+                                            class="fixed inset-0 z-40 bg-transparent cursor-default" 
+                                            onClick={() => setIsNotificationsOpen(false)}
+                                        ></div>
+                                        <div class="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-stone-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                            <div class="p-4 border-b border-stone-50 flex justify-between items-center bg-stone-50/50">
+                                                <div class="flex items-center gap-2">
+                                                    <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
+                                                    <button onClick={() => setIsNotificationsOpen(false)} class="p-1 hover:bg-stone-200 rounded-lg text-stone-400 transition-colors">
+                                                        <LucideIcon name="x" className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas</button>
+                                            </div>
+                                            <div class="max-h-80 overflow-y-auto divide-y divide-stone-50">
+                                                {notifications.length > 0 ? notifications.map(n => (
+                                                    <div key={n.id} class={`p-4 hover:bg-stone-50 transition-colors ${!n.read ? 'bg-moriah-brown/5' : ''}`}>
+                                                        <div class="flex gap-3">
+                                                            <div class={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : n.type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                                                            <div>
+                                                                <p class="text-xs font-bold text-stone-900">{n.title}</p>
+                                                                <p class="text-[11px] text-stone-500 leading-tight mt-0.5">{n.message}</p>
+                                                                <p class="text-[9px] text-stone-400 mt-1">{new Date(n.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            )) : (
-                                                <div class="p-8 text-center text-stone-400">
-                                                    <LucideIcon name="bell-off" className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                                                    <p class="text-xs">Nenhuma notificação</p>
-                                                </div>
+                                                )) : (
+                                                    <div class="p-8 text-center text-stone-400">
+                                                        <LucideIcon name="bell-off" className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                                        <p class="text-xs">Nenhuma notificação</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {notifications.length > 0 && (
+                                                <button onClick={() => setNotifications([])} class="w-full py-3 text-center text-xs font-bold text-stone-400 hover:text-red-500 transition-colors bg-stone-50/50 border-t border-stone-50">Limpar histórico</button>
                                             )}
                                         </div>
-                                        {notifications.length > 0 && (
-                                            <button onClick={() => setNotifications([])} class="w-full py-3 text-center text-xs font-bold text-stone-400 hover:text-red-500 transition-colors bg-stone-50/50 border-t border-stone-50">Limpar histórico</button>
-                                        )}
-                                    </div>
+                                    </>
                                 )}
                             </div>
                             <div class="text-right"><p class="text-[8px] font-bold text-stone-400 uppercase leading-none">Vendedor</p><p class="text-xs font-black text-stone-900 leading-none mt-0.5">{currentUser.username}</p></div>
