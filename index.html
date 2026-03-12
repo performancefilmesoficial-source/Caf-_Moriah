@@ -1420,38 +1420,59 @@
                                             <div key={p.id}
                                                 role="button"
                                                 onPointerUp={handleTap}
-                                                class={`flex flex-col justify-between bg-white p-4 rounded-2xl shadow-sm border border-stone-100 active:border-moriah-brown active:bg-stone-50 transition-all h-32 select-none ${!hasStock ? 'opacity-40 pointer-events-none' : 'cursor-pointer'}`}
+                                                class={`flex flex-col bg-white rounded-[32px] shadow-sm border border-stone-100 active:ring-2 active:ring-moriah-brown/30 active:bg-stone-50 transition-all select-none overflow-hidden ${!hasStock ? 'opacity-40 pointer-events-none' : 'cursor-pointer'}`}
                                             >
-                                                <div class="flex justify-between items-start gap-1 w-full">
-                                                    <p class="font-bold text-sm text-stone-900 leading-tight flex-1 line-clamp-2">{p.name}</p>
-                                                    {hasTwoGrinds && <span class="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full shrink-0 font-bold">☕</span>}
-                                                </div>
-                                                <div class="flex justify-between items-center mt-1 w-full">
-                                                    <div class="flex flex-col">
-                                                        {(p.category === 'Café' && parseFloat(p.price_moido) > 0 && parseFloat(p.price) !== parseFloat(p.price_moido)) ? (
-                                                            <>
-                                                                <span class="text-moriah-brown font-bold text-xs">G: R$ {parseFloat(p.price).toFixed(2)}</span>
-                                                                <span class="text-stone-600 font-bold text-xs">P: R$ {parseFloat(p.price_moido).toFixed(2)}</span>
-                                                            </>
-                                                        ) : (
-                                                            <span class="text-moriah-brown font-bold text-base">R$ {parseFloat(p.price || p.price_moido || 0).toFixed(2)}</span>
-                                                        )}
+                                                {/* Header do Card: Nome e Peso */}
+                                                <div class="p-4 pb-2">
+                                                    <div class="flex justify-between items-start gap-2 mb-1">
+                                                        <h4 class="font-black text-xs md:text-sm text-stone-900 leading-tight line-clamp-2 uppercase tracking-tight">{p.name}</h4>
+                                                        {isCoffee && <LucideIcon name="coffee" className="w-4 h-4 text-moriah-brown/40 shrink-0" />}
                                                     </div>
-                                                    <div class="flex flex-col items-end gap-1">
-                                                        {p.category === 'Café' ? (
-                                                            <div class="flex flex-col gap-0.5">
-                                                                {(p.stock_grao > 0 || p.stock_moido === 0) && (
-                                                                    <span class={`text-[9px] px-1.5 py-0.5 rounded-md font-bold ${p.stock_grao < 5 ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>G: {p.stock_grao || 0}</span>
-                                                                )}
-                                                                {(p.stock_moido > 0 || p.stock_grao === 0) && (
-                                                                    <span class={`text-[9px] px-1.5 py-0.5 rounded-md font-bold ${p.stock_moido < 5 ? 'bg-red-50 text-red-600' : 'bg-stone-100 text-stone-600'}`}>P: {p.stock_moido || 0}</span>
-                                                                )}
+                                                    {isCoffee && (
+                                                        <span class="text-[9px] font-black bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                                                            {p.weight_grams ? `${p.weight_grams}g` : '250g'}
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Conteúdo Dinâmico: Café vs Outros */}
+                                                <div class="px-4 pb-4 space-y-3">
+                                                    {isCoffee ? (
+                                                        <div class="grid grid-cols-2 gap-2 pt-2 border-t border-stone-50">
+                                                            {/* Coluna Grãos */}
+                                                            <div class="space-y-1">
+                                                                <p class="text-[8px] font-black text-stone-400 uppercase tracking-tighter">Em Grãos</p>
+                                                                <p class="text-[11px] font-black text-moriah-brown">R$ {parseFloat(p.price).toFixed(2)}</p>
+                                                                <div class={`flex items-center gap-1 text-[9px] font-bold ${p.stock_grao < 5 ? 'text-red-500' : 'text-stone-400'}`}>
+                                                                    <div class={`w-1 h-1 rounded-full ${p.stock_grao < 5 ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
+                                                                    Stock: {p.stock_grao || 0}
+                                                                </div>
                                                             </div>
-                                                        ) : (
-                                                            <span class={`text-[11px] px-2.5 py-1 rounded-full font-black ${p.stock < p.minStock ? 'bg-red-500 text-white ring-4 ring-red-500/10' : 'bg-emerald-50 text-emerald-700 ring-4 ring-emerald-500/10'}`}>Estoque: {p.stock}</span>
-                                                        )}
-                                                    </div>
+                                                            {/* Coluna Moído */}
+                                                            <div class="space-y-1 border-l border-stone-50 pl-2">
+                                                                <p class="text-[8px] font-black text-stone-400 uppercase tracking-tighter">Pó / Moído</p>
+                                                                <p class="text-[11px] font-black text-stone-700">R$ {parseFloat(p.price_moido || p.price).toFixed(2)}</p>
+                                                                <div class={`flex items-center gap-1 text-[9px] font-bold ${p.stock_moido < 5 ? 'text-red-500' : 'text-stone-400'}`}>
+                                                                    <div class={`w-1 h-1 rounded-full ${p.stock_moido < 5 ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
+                                                                    Stock: {p.stock_moido || 0}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div class="flex justify-between items-end pt-2 border-t border-stone-50">
+                                                            <div>
+                                                                <p class="text-[8px] font-black text-stone-400 uppercase tracking-tighter">Preço Un.</p>
+                                                                <p class="text-sm font-black text-moriah-brown">R$ {parseFloat(p.price).toFixed(2)}</p>
+                                                            </div>
+                                                            <div class={`px-2 py-1 rounded-lg text-[10px] font-black ${p.stock < (p.minStock || 5) ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                                                                Qtd: {p.stock}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
+
+                                                {/* Overlay de Ação (Hover Visual) */}
+                                                <div class="absolute inset-0 bg-moriah-brown/5 opacity-0 active:opacity-100 transition-opacity"></div>
                                             </div>
                                         );
                                     })}
