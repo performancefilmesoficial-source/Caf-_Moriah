@@ -93,7 +93,7 @@ async function initTables(dbUtil, isMysql) {
         hero_title TEXT DEFAULT 'O Café dos Seus Sonhos',
         hero_subtitle TEXT DEFAULT 'Experiência Sensorial',
         hero_text TEXT DEFAULT 'Grãos selecionados das melhores origens do Brasil, torrados artesanalmente para despertar todos os seus sentidos.',
-        hero_video TEXT DEFAULT 'https://cdn.pixabay.com/video/2016/06/17/3494-171876527_large.mp4',
+        hero_video TEXT DEFAULT 'https://player.vimeo.com/external/434045526.sd.mp4?s=c27ee3440e69888a7cd7c992d9d13db38c64d99c&profile_id=164&oauth2_token_id=57447761',
         about_title TEXT DEFAULT 'Descubra Nossa História',
         about_subtitle TEXT DEFAULT 'Tradição & Afeto',
         about_text_1 TEXT DEFAULT 'Nascida do amor profundo pelos grãos especiais e do desejo de levar a autêntica experiência das fazendas brasileiras diretamente para a sua xícara. O Moriah Café é mais do que uma marca, é a celebração da nossa herança.',

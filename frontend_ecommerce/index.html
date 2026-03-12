@@ -229,7 +229,7 @@
                             // Sanitiza chaves nulas do BD para strings vazias evitando crash de métodos React
                             const sanitizedData = {};
                             Object.keys(data).forEach(key => {
-                                sanitizedData[key] = data[key] || '';
+                                if (data[key]) sanitizedData[key] = data[key];
                             });
                             setSiteSettings(sanitizedData);
                         }
