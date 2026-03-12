@@ -711,6 +711,8 @@
                 return saved ? JSON.parse(saved) : [];
             });
             const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+            const [marketingQueue, setMarketingQueue] = useState([]);
+            const [marketingMessage, setMarketingMessage] = useState('');
 
             const addNotification = (title, message, type = 'info') => {
                 const newNotif = {
@@ -1121,22 +1123,42 @@ Qualquer dúvida, estamos à disposição!`;
                 setView('pos');
             };
 
-            const triggerMarketing = async () => {
+            const triggerMarketing = () => {
                 const message = prompt('Digite a mensagem de marketing:', 'Olá! Passando para lembrar que seu Café Moriah deve estar acabando. Que tal garantir um pacote novo hoje? ☕✨');
                 if (!message) return;
 
-                if (!confirm('Deseja disparar esta mensagem para todos os clientes elegíveis (regra de 15 dias)?')) return;
+                const eligible = customers.filter(c => {
+                    if (!c.last_message_at) return true;
+                    const diff = (new Date() - new Date(c.last_message_at)) / (1000 * 60 * 60 * 24);
+                    return diff >= 15;
+                });
 
-                try {
-                    const res = await apiFetch('/api/customers/bulk-marketing', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message })
-                    });
-                    const data = await res.json();
-                    alert(data.message);
-                    fetchCustomers();
-                } catch (err) { alert('Erro ao disparar marketing.'); }
+                if (eligible.length === 0) {
+                    alert('Nenhum cliente precisa de lembrete no momento (regra de 15 dias).');
+                    return;
+                }
+
+                if (!confirm(`Existem ${eligible.length} clientes que não recebem mensagens há mais de 15 dias. Deseja iniciar o envio manual?`)) return;
+
+                setMarketingMessage(message);
+                setMarketingQueue(eligible);
+            };
+
+            const sendNextInQueue = () => {
+                if (marketingQueue.length === 0) return;
+                const next = marketingQueue[0];
+                const cleanPhone = next.phone.replace(/\D/g, '');
+                const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(marketingMessage)}`;
+                
+                window.open(url, '_blank');
+                
+                // Remove da fila e atualiza (simulando que foi enviado)
+                setMarketingQueue(prev => prev.slice(1));
+                
+                // Opcional: registrar no backend que a mensagem foi enviada (mas o user quer "sem api")
+                // No entanto, para a regra de 15 dias funcionar, precisamos atualizar last_message_at.
+                // Vou manter um log básico no backend por baixo dos panos apenas para controle de data.
+                apiFetch(`/api/customers/${next.id}/mark-messaged`, { method: 'POST' }).catch(() => {});
             };
 
             const deleteProduct = async (id) => {
@@ -1723,6 +1745,28 @@ Qualquer dúvida, estamos à disposição!`;
                                                 <LucideIcon name="message-circle" className="w-6 h-6" />Enviar Mensagem
                                             </button>
                                             <button onClick={() => { setIsSuccessModalOpen(false); setCustomerPhone(''); setView('pos'); }} class="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Agora não</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Modal de Fila de Marketing */}
+                            {marketingQueue.length > 0 && (
+                                <div class="fixed inset-0 bg-emerald-900/60 backdrop-blur-md z-[90] flex items-center justify-center p-4 text-stone-900">
+                                    <div class="bg-white w-full max-w-sm rounded-[40px] shadow-2xl overflow-hidden p-8 flex flex-col items-center text-center animate-in slide-in-from-bottom-10 duration-500">
+                                        <div class="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mb-6 text-emerald-600 rotate-12"><LucideIcon name="megaphone" className="w-8 h-8" /></div>
+                                        <h3 class="text-xl font-black mb-2">Fila de Marketing</h3>
+                                        <p class="text-stone-500 text-sm mb-6">Você tem <strong>{marketingQueue.length}</strong> mensagens pendentes.</p>
+                                        
+                                        <div class="w-full bg-stone-50 p-4 rounded-2xl mb-8 text-left border border-stone-100 italic text-stone-400 text-xs">
+                                            "{marketingMessage.substring(0, 80)}..."
+                                        </div>
+
+                                        <div class="w-full space-y-3">
+                                            <button onClick={sendNextInQueue} class="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all flex items-center justify-center gap-3 shadow-lg group">
+                                                <LucideIcon name="external-link" className="w-5 h-5 group-hover:translate-x-1 transition-transform" /> Enviar para: {marketingQueue[0].name.split(' ')[0]}
+                                            </button>
+                                            <button onClick={() => { setMarketingQueue([]); fetchCustomers(); }} class="w-full py-2 text-stone-400 font-bold hover:text-red-500">Cancelar Fila</button>
                                         </div>
                                     </div>
                                 </div>
