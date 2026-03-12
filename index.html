@@ -960,23 +960,6 @@
                         return;
                     }
 
-                    // Atualiza o estoque localmente para feedback imediato
-                    setProducts(curr => curr.map(p => {
-                        const items = cart.filter(ci => ci.id === p.id);
-                        if (!items.length) return p;
-
-                        let newP = { ...p };
-                        items.forEach(ci => {
-                            if (ci.grind === 'Pó/Moído') {
-                                newP.stock_moido = Math.max(0, (newP.stock_moido || 0) - ci.quantity);
-                            } else if (ci.grind === 'Em Grão') {
-                                newP.stock_grao = Math.max(0, (newP.stock_grao || 0) - ci.quantity);
-                            } else {
-                                newP.stock = Math.max(0, (newP.stock || 0) - ci.quantity);
-                            }
-                        });
-                        return newP;
-                    }));
 
                     setCart([]);
                     setDiscount(0);
