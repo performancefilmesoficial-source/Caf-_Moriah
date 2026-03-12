@@ -709,6 +709,24 @@
             const [marketingQueue, setMarketingQueue] = useState([]);
             const [marketingMessage, setMarketingMessage] = useState('');
             const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+            const [confirmModal, setConfirmModal] = useState({ 
+                isOpen: false, title: '', message: '', resolve: null, 
+                confirmText: 'Confirmar', cancelText: 'Cancelar', type: 'info' 
+            });
+
+            const askConfirm = (title, message, options = {}) => {
+                return new Promise((resolve) => {
+                    setConfirmModal({
+                        isOpen: true,
+                        title,
+                        message,
+                        resolve,
+                        confirmText: options.confirmText || 'Confirmar',
+                        cancelText: options.cancelText || 'Cancelar',
+                        type: options.type || 'info'
+                    });
+                });
+            };
 
             const generateWithAI = async (field) => {
                 const referenceValue = 'Moriah Café Especial'; 
@@ -933,7 +951,7 @@
                 const total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
 
                 // Mensagem de confirmação solicitada pelo usuário
-                if (!confirm(`Confirmar finalização de venda no valor de R$ ${total.toFixed(2).replace('.', ',')} via ${method}?`)) {
+                if (!await askConfirm('Confirmar Venda', `Deseja finalizar a venda no valor de R$ ${total.toFixed(2).replace('.', ',')} via ${method}?`)) {
                     return;
                 }
 
@@ -1007,7 +1025,7 @@
                 total = parseFloat((total / (1 - appliedRate)).toFixed(2));
 
                 const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
-                if (!confirm(`Confirmar cobrança de R$ ${total.toFixed(2).replace('.', ',')} no ${methodLabel}?`)) {
+                if (!await askConfirm('Confirmar Cobrança', `Deseja cobrar R$ ${total.toFixed(2).replace('.', ',')} no ${methodLabel}?`)) {
                     return;
                 }
 
@@ -1135,7 +1153,7 @@ Qualquer dúvida, estamos à disposição!`;
                 setView('pos');
             };
 
-            const triggerMarketing = () => {
+            const triggerMarketing = async () => {
                 const message = prompt('Digite a mensagem de marketing:', 'Olá! Passando para lembrar que seu Café Moriah deve estar acabando. Que tal garantir um pacote novo hoje? ☕✨');
                 if (!message) return;
 
@@ -1150,7 +1168,7 @@ Qualquer dúvida, estamos à disposição!`;
                     return;
                 }
 
-                if (!confirm(`Existem ${eligible.length} clientes que não recebem mensagens há mais de 15 dias. Deseja iniciar o envio manual?`)) return;
+                if (!await askConfirm('Marketing Direto', `Existem ${eligible.length} clientes que não recebem mensagens há mais de 15 dias. Deseja iniciar o envio manual?`)) return;
 
                 setMarketingMessage(message);
                 setMarketingQueue(eligible);
@@ -1174,7 +1192,7 @@ Qualquer dúvida, estamos à disposição!`;
             };
 
             const deleteProduct = async (id) => {
-                if (confirm('Tem certeza que deseja excluir este produto?')) {
+                if (await askConfirm('Excluir Produto', 'Tem certeza que deseja excluir este produto?', { type: 'danger' })) {
                     try {
                         const res = await apiFetch(`/api/products/${id}`, { method: 'DELETE' });
                         if (res.ok) {
@@ -1188,7 +1206,7 @@ Qualquer dúvida, estamos à disposição!`;
             };
 
             const generateLabel = async (sale_id) => {
-                if (!confirm('Confirmar Geração de Etiqueta Logística? As taxas poderão ser cobradas do Saldo da Conta de Envios.')) return;
+                if (!await askConfirm('Geração de Etiqueta', 'Confirmar Geração de Etiqueta Logística? As taxas poderão ser cobradas do Saldo da Conta de Envios.')) return;
                 try {
                     const res = await apiFetch('/api/shipping/generate-label', {
                         method: 'POST',
@@ -1684,6 +1702,37 @@ Qualquer dúvida, estamos à disposição!`;
                                                     Não, Cancelar Operação
                                                 </button>
                                                 <button onClick={() => setIsManualConfirmOpen(false)} class="text-stone-400 font-bold text-xs hover:text-stone-600 py-2">Voltar para Aguardo</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                             {/* Modal de Confirmação Customizado (Substitui confirm() nativo) */}
+                             {confirmModal.isOpen && (
+                                <div class="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                                    <div class="bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-stone-100">
+                                        <div class="p-8 flex flex-col items-center text-center gap-6">
+                                            <div class={`w-16 h-16 rounded-3xl flex items-center justify-center ${confirmModal.type === 'danger' ? 'bg-red-50 text-red-500' : 'bg-moriah-brown/10 text-moriah-brown'}`}>
+                                                <LucideIcon name={confirmModal.type === 'danger' ? 'alert-triangle' : 'help-circle'} className="w-8 h-8" />
+                                            </div>
+                                            <div>
+                                                <h3 class="text-xl font-black text-stone-900 mb-2">{confirmModal.title}</h3>
+                                                <p class="text-stone-500 text-sm leading-relaxed">{confirmModal.message}</p>
+                                            </div>
+                                            <div class="flex flex-col gap-3 w-full">
+                                                <button 
+                                                    onClick={() => { confirmModal.resolve(true); setConfirmModal(prev => ({ ...prev, isOpen: false })); }}
+                                                    class={`w-full py-4 text-white rounded-2xl font-black text-lg transition-all shadow-lg active:scale-95 ${confirmModal.type === 'danger' ? 'bg-red-500 hover:bg-red-600 shadow-red-100' : 'bg-moriah-brown hover:bg-moriah-dark shadow-stone-100'}`}
+                                                >
+                                                    {confirmModal.confirmText}
+                                                </button>
+                                                <button 
+                                                    onClick={() => { confirmModal.resolve(false); setConfirmModal(prev => ({ ...prev, isOpen: false })); }}
+                                                    class="w-full py-4 bg-stone-100 text-stone-600 rounded-2xl font-black text-lg hover:bg-stone-200 transition-all active:scale-95"
+                                                >
+                                                    {confirmModal.cancelText}
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -2406,7 +2455,7 @@ Qualquer dúvida, estamos à disposição!`;
                                                             {u.id === currentUser.id
                                                                 ? <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">VOCÊ</span>
                                                                 : <button onClick={async () => {
-                                                                    if (!confirm(`Remover acesso de "${u.name}"?`)) return;
+                                                                    if (!await askConfirm('Remover Acesso', `Deseja remover o acesso de "${u.name}"?`, { type: 'danger' })) return;
                                                                     await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' });
                                                                     reloadUsers();
                                                                 }} class="p-2 text-stone-300 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"><LucideIcon name="user-minus" className="w-4 h-4" /></button>
@@ -2481,7 +2530,7 @@ Qualquer dúvida, estamos à disposição!`;
                                                             <td class="px-6 py-4 text-right">
                                                                 <div class="flex justify-end gap-2">
                                                                     <a href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} target="_blank" class="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="Falar no WhatsApp"><LucideIcon name="message-circle" className="w-4 h-4" /></a>
-                                                                    <button onClick={async () => { if (confirm('Excluir este cliente?')) { await apiFetch(`/api/customers/${c.id}`, { method: 'DELETE' }); fetchCustomers(); } }} class="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
+                                                                    <button onClick={async () => { if (await askConfirm('Excluir Cliente', 'Deseja excluir este cliente?', { type: 'danger' })) { await apiFetch(`/api/customers/${c.id}`, { method: 'DELETE' }); fetchCustomers(); } }} class="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
                                                                 </div>
                                                             </td>
                                                         </tr>
