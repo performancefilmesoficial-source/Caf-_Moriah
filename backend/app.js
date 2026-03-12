@@ -90,14 +90,26 @@ app.post('/api/generate-ai', async (req, res) => {
 
         let prompt = "";
         if (field === 'name') {
-            prompt = `Sugira um nome comercial mais atraente e profissional para o produto: "${productName}". Retorne apenas o nome sugerido, sem explicações.`;
+            prompt = `Sugira um nome comercial sofisticado, curto e luxuoso para o produto: "${productName}". 
+            O nome deve evocar sensações de exclusividade, grãos selecionados e tradição cafeeira premium. 
+            Retorne apenas o nome sugerido, sem aspas ou explicações.`;
         } else if (field === 'sku') {
             prompt = `Gere um código SKU único e profissional para o produto: "${productName}". O SKU deve ter o prefixo MORIAH-, ser curto (ex: MORIAH-CAFE-INT) e em maiúsculas. Retorne apenas o código.`;
+        } else if (field === 'hero_title') {
+            prompt = `Crie um título impactante e luxuoso para a página principal de um e-commerce de cafés especiais chamado Moriah. 
+            O título deve ser curto (máximo 10 palavras) e transmitir a sensação de que o café Moriah é um momento sagrado, exclusivo e sensorialmente rico. 
+            DICA: Use \n (ex: Seu momento MORIAH\nta te esperando) para quebras de linha estratégicas.
+            Retorne apenas o título.`;
+        } else if (field === 'hero_text') {
+            prompt = `Escreva uma frase descritiva elegante e curta (máximo 20 palavras) para o cabeçalho de um site de cafés premium. 
+            Foque na origem, no sabor inconfundível e no cuidado artesanal da Moriah. 
+            Retorne apenas o texto.`;
         } else {
-            prompt = `Escreva uma descrição detalhada, vendedora e profissional para o site de e-commerce do produto: "${productName}". 
-            Destaque características como sabor, aroma e experiência (caso seja café) ou utilidade e qualidade (caso seja acessório). 
+            prompt = `Escreva uma descrição detalhada, vendedora e extremamente profissional para o site de e-commerce do produto: "${productName}". 
+            Destaque características como notas sensoriais (chocolate, caramelo, frutas), aroma envolvente e a experiência de um café especial superior. 
+            Caso seja um acessório, foque no design, durabilidade e como ele eleva o preparo do café.
             Use formatação Markdown leve (negrito para pontos chave). 
-            O público é exigente e aprecia cafés especiais.
+            O público é exigente e aprecia cafés de altíssima qualidade.
             Retorne apenas a descrição.`;
         }
 
