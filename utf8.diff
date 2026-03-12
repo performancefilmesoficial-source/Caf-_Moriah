@@ -1,0 +1,49 @@
+﻿commit 1594fd1ecbb829b64667f829e0b63421c38a6b48
+Author: Moriah PDV <admin@moriah-pdv.com>
+Date:   Tue Mar 10 12:13:39 2026 -0300
+
+    fix(pdv): substituir Asaas QR por bot├Áes InfinitePay diretos no checkout
+    
+    Remove Cr├®dito QR / D├®bito QR (Asaas) do modal de pagamento PDV.
+    D├®bito e Cr├®dito agora chamam InfinitePay direto, sem submenu,
+    com label 'aproxime o cart├úo' para clareza.
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+diff --git a/index.html b/index.html
+index 94818a5..d01bc7a 100644
+--- a/index.html
++++ b/index.html
+@@ -1164,27 +1164,13 @@
+                                                     <button onClick={() => finalizeSale('Dinheiro')} class="flex items-center justify-between p-3.5 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
+                                                         <div class="flex items-center gap-3"><LucideIcon name="banknote" className="w-5 h-5 text-emerald-600" /><span class="font-bold">Dinheiro</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+                                                     </button>
+-                                                    {/* Cr├®dito/D├®bito QR via Asaas */}
+-                                                    <button onClick={() => finalizeAsaasCharge('CREDIT_CARD')} class="flex items-center justify-between p-3.5 bg-moriah-green/5 hover:bg-moriah-green/10 rounded-2xl border border-moriah-green/30 transition-all group">
+-                                                        <div class="flex items-center gap-3"><LucideIcon name="qr-code" className="w-5 h-5 text-moriah-green" /><div class="text-left"><span class="font-bold text-moriah-green">Cr├®dito QR</span><p class="text-[10px] text-stone-400">Asaas ÔÇó cliente paga no celular</p></div></div><LucideIcon name="chevron-right" className="w-5 h-5 text-moriah-green/30 group-hover:text-moriah-green/60" />
++                                                    {/* InfinitePay ÔÇö Maquininha no celular */}
++                                                    <button onClick={() => handleInfinitePay('debit')} class="flex items-center justify-between p-3.5 bg-blue-50 hover:bg-blue-100 rounded-2xl border border-blue-200 transition-all group">
++                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-5 h-5 text-blue-600" /><div class="text-left"><span class="font-bold text-blue-700">D├®bito</span><p class="text-[10px] text-stone-400">InfinitePay ÔÇó aproxime o cart├úo</p></div></div><LucideIcon name="chevron-right" className="w-5 h-5 text-blue-300 group-hover:text-blue-500" />
+                                                     </button>
+-                                                    <button onClick={() => finalizeAsaasCharge('DEBIT_CARD')} class="flex items-center justify-between p-3.5 bg-moriah-green/5 hover:bg-moriah-green/10 rounded-2xl border border-moriah-green/30 transition-all group">
+-                                                        <div class="flex items-center gap-3"><LucideIcon name="qr-code" className="w-5 h-5 text-moriah-green" /><div class="text-left"><span class="font-bold text-moriah-green">D├®bito QR</span><p class="text-[10px] text-stone-400">Asaas ÔÇó cliente paga no celular</p></div></div><LucideIcon name="chevron-right" className="w-5 h-5 text-moriah-green/30 group-hover:text-moriah-green/60" />
++                                                    <button onClick={() => handleInfinitePay('credit')} class="flex items-center justify-between p-3.5 bg-purple-50 hover:bg-purple-100 rounded-2xl border border-purple-200 transition-all group">
++                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-5 h-5 text-purple-600" /><div class="text-left"><span class="font-bold text-purple-700">Cr├®dito</span><p class="text-[10px] text-stone-400">InfinitePay ÔÇó aproxime o cart├úo</p></div></div><LucideIcon name="chevron-right" className="w-5 h-5 text-purple-300 group-hover:text-purple-500" />
+                                                     </button>
+-                                                    {/* Maquininha f├¡sica (manual) */}
+-                                                    <button onClick={() => setShowMachineSubmenu(v => !v)} class="flex items-center justify-between p-3.5 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
+-                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-5 h-5 text-stone-500" /><div class="text-left"><span class="font-bold">Maquininha</span><p class="text-[10px] text-stone-400">Cr├®dito ou D├®bito f├¡sico</p></div></div><LucideIcon name={showMachineSubmenu ? 'chevron-down' : 'chevron-right'} className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+-                                                    </button>
+-                                                    {showMachineSubmenu && (
+-                                                        <div class="pl-4 space-y-2">
+-                                                            <button onClick={() => handleInfinitePay('debit')} class="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-blue-50 rounded-xl border border-stone-200 transition-all group">
+-                                                                <div class="flex items-center gap-2"><LucideIcon name="credit-card" className="w-4 h-4 text-blue-600" /><span class="font-bold text-sm">D├®bito Maquininha</span></div><LucideIcon name="chevron-right" className="w-4 h-4 text-stone-300" />
+-                                                            </button>
+-                                                            <button onClick={() => handleInfinitePay('credit')} class="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-purple-50 rounded-xl border border-stone-200 transition-all group">
+-                                                                <div class="flex items-center gap-2"><LucideIcon name="credit-card" className="w-4 h-4 text-purple-600" /><span class="font-bold text-sm">Cr├®dito Maquininha</span></div><LucideIcon name="chevron-right" className="w-4 h-4 text-stone-300" />
+-                                                            </button>
+-                                                        </div>
+-                                                    )}
+                                                     <button onClick={() => finalizeSale('PIX')} class="flex items-center justify-between p-3.5 bg-teal-50 hover:bg-teal-100 rounded-2xl border border-teal-200 transition-all group">
+                                                         <div class="flex items-center gap-3"><LucideIcon name="qr-code" className="w-5 h-5 text-teal-600" /><span class="font-bold text-teal-800">PIX</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-teal-300 group-hover:text-teal-500" />
+                                                     </button>

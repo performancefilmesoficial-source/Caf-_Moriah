@@ -23,7 +23,7 @@ router.get('/online', async (req, res, next) => {
     try {
         const db = getDb();
         const [rows] = await db.query(
-            'SELECT * FROM products WHERE sell_online = 1 AND stock > 0 ORDER BY name ASC'
+            "SELECT * FROM products WHERE sell_online = 1 AND (stock > 0 OR stock_grao > 0 OR stock_moido > 0) ORDER BY name ASC"
         );
         res.json(rows);
     } catch (err) { next(err); }

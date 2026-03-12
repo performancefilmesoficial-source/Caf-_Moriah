@@ -1,0 +1,180 @@
+﻿commit e45adcac207ebcb4f43f928480adbeac5a8811dc
+Author: Moriah PDV <admin@moriah-pdv.com>
+Date:   Tue Mar 10 12:01:07 2026 -0300
+
+    feat: integra├º├úo InfinitePay autom├ítica no PDV
+    
+    - Maquininha D├®bito/Cr├®dito cria cobran├ºa real via API InfinitePay
+      (handle: cafemoriah) com o valor exato do carrinho
+    - Abre o checkout InfinitePay em nova aba (abre o app via Universal Links)
+    - Modal de espera com polling a cada 3s aguarda confirma├º├úo autom├ítica
+    - Webhook /api/webhooks/infinitepay atualizado para payload real (order_nsu,
+      paid_amount, capture_method)
+    - Bot├úo "Cancelar / Manual" para confirmar manualmente se webhook falhar
+    - Detecta retorno via redirect_url (?ip_paid=sale_id) para fechar modal
+    
+    Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+diff --git a/index.html b/index.html
+index a2baff6..94818a5 100644
+--- a/index.html
++++ b/index.html
+@@ -572,6 +572,8 @@
+             const [asaasPolling, setAsaasPolling] = useState(null); // interval ref
+             const [asaasPaid, setAsaasPaid] = useState(false);
+             const [showMachineSubmenu, setShowMachineSubmenu] = useState(false);
++            const [ipWaiting, setIpWaiting] = useState(null); // { sale_id, method }
++            const ipPollingRef = React.useRef(null);
+             const [siteSettings, setSiteSettings] = useState({
+                 hero_title: '', hero_subtitle: '', hero_text: '', hero_video: '',
+                 about_title: '', about_subtitle: '', about_text_1: '', about_text_2: '', about_image: ''
+@@ -614,6 +616,20 @@
+             }, [currentUser]);
+             useEffect(() => { localStorage.setItem('moriah_customers', JSON.stringify(customers)); }, [customers]);
+ 
++            // Detecta retorno do InfinitePay (?ip_paid=sale_id na URL)
++            useEffect(() => {
++                const params = new URLSearchParams(window.location.search);
++                const paidId = params.get('ip_paid');
++                if (paidId) {
++                    window.history.replaceState({}, '', window.location.pathname);
++                    clearInterval(ipPollingRef.current);
++                    setIpWaiting(null);
++                    setCart([]);
++                    setDiscount(0);
++                    setIsSuccessModalOpen(true);
++                }
++            }, []);
++
+             // Busca vendas do banco de dados ao abrir a aba de vendas
+             // Auto-refresh a cada 30s para capturar pedidos online automaticamente
+             useEffect(() => {
+@@ -758,6 +774,82 @@
+                 }
+             };
+ 
++            // ÔöÇÔöÇÔöÇ InfinitePay: abre checkout + polling de confirma├º├úo ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
++            const handleInfinitePay = async (cardType) => {
++                const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
++                const total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
++                setShowMachineSubmenu(false);
++
++                try {
++                    const res = await apiFetch('/api/pdv/infinitepay/charge', {
++                        method: 'POST',
++                        headers: { 'Content-Type': 'application/json' },
++                        body: JSON.stringify({
++                            total,
++                            cardType,
++                            items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price }))
++                        })
++                    });
++
++                    if (!res.ok) {
++                        const err = await res.json();
++                        alert('Erro: ' + (err.error || 'Tente novamente'));
++                        return;
++                    }
++
++                    const { sale_id, checkout_url } = await res.json();
++                    const methodLabel = cardType === 'debit' ? 'Cart├úo D├®bito' : 'Cart├úo Cr├®dito';
++
++                    // Atualiza estoque local imediatamente
++                    setProducts(curr => curr.map(p => {
++                        const qty = cart.filter(ci => ci.id === p.id).reduce((s, ci) => s + ci.quantity, 0);
++                        return qty > 0 ? { ...p, stock: p.stock - qty } : p;
++                    }));
++
++                    // Abre o checkout InfinitePay (abre o app se instalado via Universal Links)
++                    window.open(checkout_url, '_blank');
++
++                    // Mostra modal de espera e inicia polling
++                    setIpWaiting({ sale_id, method: methodLabel, total });
++                    setIsCheckoutOpen(false);
++
++                    ipPollingRef.current = setInterval(async () => {
++                        try {
++                            const statusRes = await apiFetch(`/api/pdv/infinitepay/status/${sale_id}`);
++                            const data = await statusRes.json();
++                            if (data.paid) {
++                                clearInterval(ipPollingRef.current);
++                                setIpWaiting(null);
++                                setCart([]);
++                                setDiscount(0);
++                                setLastSale({ total, method: methodLabel, items: cart });
++                                setIsSuccessModalOpen(true);
++                            }
++                        } catch (_) {}
++                    }, 3000);
++
++                } catch (error) {
++                    alert('Falha de conex├úo. Verifique sua rede.');
++                }
++            };
++
++            const cancelInfinitePay = async () => {
++                clearInterval(ipPollingRef.current);
++                // Confirma manualmente se o operador sabe que foi pago
++                if (ipWaiting && confirm('O pagamento foi processado na maquininha?')) {
++                    await apiFetch(`/api/pdv/sales/${ipWaiting.sale_id}/confirm`, {
++                        method: 'PUT',
++                        headers: { 'Content-Type': 'application/json' },
++                        body: JSON.stringify({ method: ipWaiting.method })
++                    });
++                    setCart([]);
++                    setDiscount(0);
++                    setLastSale({ total: ipWaiting.total, method: ipWaiting.method, items: cart });
++                    setIsSuccessModalOpen(true);
++                }
++                setIpWaiting(null);
++            };
++
+             const sendWhatsAppReceipt = () => {
+                 if (!customerPhone) return;
+                 let message = `Obrigado por escolher o Caf├® Moriah!\nFicamos felizes em fazer parte da sua rotina.\n\nPara acompanhar as novidades, siga a gente no Instagram: @cafemoriah__`;
+@@ -1085,10 +1177,10 @@
+                                                     </button>
+                                                     {showMachineSubmenu && (
+                                                         <div class="pl-4 space-y-2">
+-                                                            <button onClick={() => { setShowMachineSubmenu(false); finalizeSale('Cart├úo D├®bito'); }} class="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-blue-50 rounded-xl border border-stone-200 transition-all group">
++                                                            <button onClick={() => handleInfinitePay('debit')} class="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-blue-50 rounded-xl border border-stone-200 transition-all group">
+                                                                 <div class="flex items-center gap-2"><LucideIcon name="credit-card" className="w-4 h-4 text-blue-600" /><span class="font-bold text-sm">D├®bito Maquininha</span></div><LucideIcon name="chevron-right" className="w-4 h-4 text-stone-300" />
+                                                             </button>
+-                                                            <button onClick={() => { setShowMachineSubmenu(false); finalizeSale('Cart├úo Cr├®dito'); }} class="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-purple-50 rounded-xl border border-stone-200 transition-all group">
++                                                            <button onClick={() => handleInfinitePay('credit')} class="w-full flex items-center justify-between p-3 bg-stone-50 hover:bg-purple-50 rounded-xl border border-stone-200 transition-all group">
+                                                                 <div class="flex items-center gap-2"><LucideIcon name="credit-card" className="w-4 h-4 text-purple-600" /><span class="font-bold text-sm">Cr├®dito Maquininha</span></div><LucideIcon name="chevron-right" className="w-4 h-4 text-stone-300" />
+                                                             </button>
+                                                         </div>
+@@ -1104,6 +1196,32 @@
+                                 </div>
+                             )}
+ 
++                            {/* Modal InfinitePay ÔÇö aguardando confirma├º├úo */}
++                            {ipWaiting && (
++                                <div class="fixed inset-0 bg-black/80 backdrop-blur-md z-[70] flex items-center justify-center p-4">
++                                    <div class="bg-white w-[90%] max-w-sm rounded-[28px] shadow-2xl p-8 flex flex-col items-center text-center gap-4">
++                                        <div class="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center">
++                                            <LucideIcon name="credit-card" className="w-8 h-8 text-blue-600" />
++                                        </div>
++                                        <h2 class="text-xl font-black text-stone-900">Aguardando Pagamento</h2>
++                                        <p class="text-stone-500 text-sm">Processe o cart├úo no app <strong>InfinitePay</strong> e confirme.</p>
++                                        <div class="bg-blue-50 rounded-2xl px-6 py-3 w-full">
++                                            <p class="text-xs text-blue-500 font-semibold uppercase tracking-wider mb-1">{ipWaiting.method}</p>
++                                            <p class="text-3xl font-black text-blue-700">R$ {ipWaiting.total.toFixed(2).replace('.', ',')}</p>
++                                        </div>
++                                        <div class="flex items-center gap-2 text-xs text-stone-400">
++                                            <div class="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
++                                            Confirma├º├úo autom├ítica em andamento...
++                                        </div>
++                                        <div class="flex gap-3 w-full pt-2">
++                                            <button onClick={cancelInfinitePay} class="flex-1 py-3 bg-stone-100 text-stone-600 rounded-2xl font-bold text-sm hover:bg-stone-200 transition-all">
++                                                Cancelar / Manual
++                                            </button>
++                                        </div>
++                                    </div>
++                                </div>
++                            )}
++
+                             {isPixModalOpen && (
+                                 <div class="fixed inset-0 bg-moriah-brown/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 md:p-8 text-stone-900">
+                                     <div class="bg-white w-[90%] md:w-full max-w-xs md:max-w-sm rounded-[24px] md:rounded-[40px] shadow-2xl overflow-y-auto max-h-[90vh] p-4 md:p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">

@@ -1,0 +1,2380 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moriah Caféé - PDV & Gestáão</title>
+    <link rel=icon type=image/png href=favicon.png>
+    <link rel=apple-touch-icon href=favicon.png>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latestá"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Remove qualquer Service Worker antigo que possa estáar causando loops -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+                regs.forEach(function (r) { r.unregister(); });
+            });
+        }
+    </script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        moriah: {
+                            brown: '#4A3728',
+                            dark: '#2D1E15',
+                            cream: '#F5F5DC',
+                            teal: '#004D40',
+                            green: '#123930',
+                            gray: '#212121',
+                            black: '#1a1817',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        html,
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #fcfcfc;
+            overflow-x: hidden;
+            max-width: 100vw;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        /* Corrige toque em botões no iOS — sem delay de 300ms */
+        button,
+        [role="button"],
+        a {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            cursor: pointer;
+        }
+
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+
+        .pt-safe {
+            padding-top: env(safe-area-inset-top, 0);
+        }
+
+        .pb-32 {
+            padding-bottom: 8rem;
+        }
+
+        /* Garante que nenhum elemento estáoure a largura da tela */
+        *,
+        *::before,
+        *::after {
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 1rem;
+        }
+
+        @media (max-width: 640px) {
+            .product-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 0.75rem;
+            }
+        }
+
+        @media (min-width: 768px) {
+            .product-grid {
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            }
+        }
+
+        .mobile-nav-shadow {
+            box-shadow: 0 -4px 20px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            aside {
+                display: none !important;
+            }
+
+            main {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+            }
+
+            .print-only {
+                display: block !important;
+            }
+
+            .bg-stone-50 {
+                background: white !important;
+            }
+
+            .shadow-sm,
+            .shadow-lg,
+            .shadow-2xl {
+                box-shadow: none !important;
+                border: 1px solid #eee !important;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-stone-50 text-stone-900">
+    <div id="root" class="flex items-center justify-center h-screen bg-stone-50 w-full">
+        <div class="text-center">
+            <div
+                class="w-12 h-12 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin mx-auto mb-4">
+            </div>
+            <p class="text-stone-500 font-medium animate-pulse">Carregando Moriah Caféé...</p>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const apiFetch = async (url, options = {}) => {
+            const token = localStorage.getItem('moriah_jwt');
+            const headers = { ...options.headers };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+            const res = await window.fetch(url, { ...options, headers });
+            if ((res.status === 401 || res.status === 403) && !url.includes('/api/auth/login')) {
+                const hadToken = !!token;
+                localStorage.removeItem('moriah_jwt');
+                localStorage.removeItem('moriah_current_user');
+                if (hadToken) {
+                    alert('Sessão expirada ou acesso negado. Faça login novamente.');
+                    window.location.reload();
+                }
+            }
+            return res;
+        };
+
+
+        const initialProducts = [
+            { id: 1, name: 'Caféé Espresso', category: 'Caféé', cost: 2.5, price: 7.0, stock: 50, minStock: 10, sku: 'C001' },
+            { id: 2, name: 'Cappuccino', category: 'Caféé', cost: 4.0, price: 12.0, stock: 30, minStock: 10, sku: 'C002' },
+            { id: 3, name: 'Módulo V60 Moriah', category: 'Acessórios', cost: 85.0, price: 145.0, stock: 4, minStock: 5, sku: 'A001' },
+            { id: 4, name: 'Água Mineral', category: 'Bebidas Prontas', cost: 1.2, price: 4.5, stock: 100, minStock: 20, sku: 'B001' },
+        ];
+
+        const LucideIcon = ({ name, className }) => {
+            const [mounted, setMounted] = React.useState(false);
+            React.useEffect(() => setMounted(true), []);
+            if (!mounted || typeof lucide === 'undefined') return <span className={`inline-block ${className || 'w-5 h-5'}`} />;
+
+            const icons = lucide.icons || lucide;
+            const pascalName = name.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('');
+            const iconData = icons[pascalName] || icons[name] || icons['HelpCircle'] || icons['help-circle'];
+
+            if (!iconData || !Array.isArray(iconData)) return <span className={`inline-block ${className || 'w-5 h-5'}`}>?</span>;
+
+            try {
+                const paths = iconData.map(([tag, attrs]) => {
+                    const attrStr = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ');
+                    return `<${tag} ${attrStr}></${tag}>`;
+                }).join('');
+                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-${name}">${paths}</svg>`;
+                return <span className={`inline-flex items-center justify-center shrink-0 ${className || 'w-5 h-5'}`} dangerouslySetInnerHTML={{ __html: svg }} />;
+            } catch (e) {
+                return <span className={className || 'w-5 h-5'}>!</span>;
+            }
+        };
+
+        const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
+            <button onClick={onClick} class={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-moriah-brown text-white' : 'text-stone-500 hover:bg-stone-100'}`}>
+                <LucideIcon name={Icon} className="w-5 h-5" />
+                <span class="font-medium">{label}</span>
+            </button>
+        );
+
+        const ProductForm = ({ isEdit, editingProduct, setProducts, setEditingProduct, setView }) => {
+            // Lógica para carregar imagens antigas de DB como array
+            const loadImages = (urlData) => {
+                if (!urlData) return [];
+                try {
+                    const parsed = JSON.parse(urlData);
+                    if (Array.isArray(parsed)) return parsed;
+                    return [urlData];
+                } catch (e) {
+                    return [urlData];
+                }
+            };
+
+            const [formData, setFormData] = React.useState(isEdit && editingProduct ? {
+                ...editingProduct,
+                image_url: loadImages(editingProduct.image_url) // Agora image_url é sempre Array aqui dentro
+            } : {
+                name: '', category: 'Caféé', cost: '', price: '', price_moido: '', cost_moido: '', stock: '', stock_moido: '', stock_grao: '',
+                sku: '', image_url: [], description: '', weight_grams: 250, sell_online: 1
+            });
+            const [isGeneratingAI, setIsGeneratingAI] = React.useState(false);
+            const [isUploading, setIsUploading] = React.useState(false);
+
+            const handleChange = (e) => {
+                const { name, value, type, checked } = e.target;
+                setFormData(prev => ({
+                    ...prev,
+                    [name]: type === 'checkbox' ? (checked ? 1 : 0) : value
+                }));
+            };
+
+            const generateWithAI = async (field) => {
+                if (!formData.name) {
+                    alert('Digite o nome do produto primeiro (ex: "Caféé Especial Torra Clara")');
+                    return;
+                }
+                setIsGeneratingAI(field);
+                try {
+                    const res = await apiFetch('/api/generate-ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ productName: formData.name })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        setFormData(prev => ({
+                            ...prev,
+                            sku: field === 'sku' ? data.sku : prev.sku,
+                            description: field === 'description' ? data.description : prev.description
+                        }));
+                    } else throw new Error(data.error);
+                } catch (e) {
+                    alert('Erro na IA: ' + e.message);
+                }
+                setIsGeneratingAI(false);
+            };
+
+            const handleImageUpload = async (e) => {
+                const files = Array.from(e.target.files);
+                if (!files || files.length === 0) return;
+                setIsUploading(true);
+
+                // Criar array para múltiplas URLs enviadas de uma vez
+                const newUrls = [];
+
+                for (const file of files) {
+                    const uploadData = new FormData();
+                    uploadData.append('image', file);
+                    try {
+                        const res = await apiFetch('/api/upload', {
+                            method: 'POST',
+                            body: uploadData
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                            newUrls.push(`${data.imageUrl}`);
+                        } else throw new Error(data.error);
+                    } catch (e) {
+                        alert(`Erro ao enviar imagem ${file.name}: ` + e.message);
+                    }
+                }
+
+                if (newUrls.length > 0) {
+                    setFormData(prev => ({ ...prev, image_url: [...prev.image_url, ...newUrls] }));
+                }
+
+                setIsUploading(false);
+                // Reseta input de file
+                e.target.value = null;
+            };
+
+            const removeImage = (indexToRemove) => {
+                setFormData(prev => ({
+                    ...prev,
+                    image_url: prev.image_url.filter((_, idx) => idx !== indexToRemove)
+                }));
+            };
+
+            return (
+                <div class="max-w-2xl mx-auto bg-white p-8 rounded-3xl shadow-lg border border-stone-100 animate-in zoom-in-95 duration-300 mb-20 md:mb-0">
+                    <h2 class="text-2xl font-bold mb-6">{isEdit ? 'Editar Produto' : 'Novo Produto'}</h2>
+                    <div class="grid grid-cols-1 gap-8">
+                        <form class="space-y-6" onSubmit={async (e) => {
+                            e.preventDefault();
+                            const productData = {
+                                name: formData.name,
+                                category: formData.category,
+                                minStock: 5,
+                                sku: formData.sku,
+                                image_url: Array.isArray(formData.image_url) ? JSON.stringify(formData.image_url) : formData.image_url,
+                                description: formData.description,
+                                weight_grams: parseInt(formData.weight_grams) || 250,
+                                weight_grams_moido: parseInt(formData.weight_grams_moido) || 250,
+                                sell_online: formData.sell_online
+                            };
+
+                            try {
+                                let res;
+                                if (isEdit) {
+                                    res = await apiFetch(`/api/products/${editingProduct.id}`, {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(productData)
+                                    });
+                                } else {
+                                    res = await apiFetch('/api/products', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(productData)
+                                    });
+                                }
+
+                                if (res.ok) {
+                                    const reload = await apiFetch('/api/products');
+                                    const newData = await reload.json();
+                                    setProducts(newData);
+                                    setEditingProduct(null);
+                                    setView('inventory');
+                                } else {
+                                    alert("Erro ao salvar o produto.");
+                                }
+                            } catch (error) {
+                                console.error("Erro no processamento:", error);
+                                alert("Erro de conexão com o servidor.");
+                            }
+                        }}>
+                            <div>
+                                <label class="block text-sm font-medium text-stone-500 mb-1">Nome do Produto</label>
+                                <input name="name" value={formData.name} onChange={handleChange} required class="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-moriah-brown/50 outline-none font-bold text-lg" placeholder="Ex: Caféé Especial Torra Média" />
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="block text-sm font-medium text-stone-500">SKU / Barcode</label>
+                                        <button type="button" onClick={() => generateWithAI('sku')} class="text-[10px] bg-indigo-50 text-indigo-600 font-bold px-2 py-1 rounded hover:bg-indigo-100 flex items-center gap-1">
+                                            {isGeneratingAI === 'sku' ? '⏳ Gerando...' : '✨ Gerador IA'}
+                                        </button>
+                                    </div>
+                                    <input name="sku" value={formData.sku} onChange={handleChange} required class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none uppercase font-mono" placeholder="Ex: CAFE-ESP-250G" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-stone-500 mb-1">Categoria</label>
+                                    <select name="category" value={formData.category} onChange={handleChange} class="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl outline-none">
+                                        <option value="Caféé">Caféé</option>
+                                        <option value="Acessórios">Acessórios</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="bg-stone-50 p-4 rounded-2xl border border-stone-200">
+                                <div class="flex items-center justify-between mb-3">
+                                    <label class="font-bold text-stone-700">Fotos do Produto (Site & PDV)</label>
+                                    <div class="text-xs text-stone-500 font-medium bg-white px-2 py-1 rounded-md border border-stone-200">
+                                        {formData.image_url?.length || 0} foto(s)
+                                    </div>
+                                </div>
+                                <div class="space-y-4">
+                                    <div class="flex items-center gap-3 overflow-x-auto pb-2">
+                                        {formData.image_url && formData.image_url.length > 0 ? (
+                                            formData.image_url.map((url, idx) => (
+                                                <div key={idx} class="relative w-20 h-20 rounded-xl overflow-hidden border border-stone-200 bg-white shrink-0 group">
+                                                    <img src={url} class="w-full h-full object-cover" />
+                                                    <button type="button" onClick={() => removeImage(idx)} class="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 shadow opacity-0 group-hover:opacity-100 transition-opacity"><LucideIcon name="x" className="w-3 h-3" /></button>
+                                                    {idx === 0 && <div class="absolute bottom-0 inset-x-0 bg-moriah-brown/90 text-white text-[9px] font-bold text-center py-0.5">PRINCIPAL</div>}
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div class="w-20 h-20 rounded-xl border-2 border-dashed border-stone-300 flex items-center justify-center bg-white text-stone-400 shrink-0">
+                                                <LucideIcon name="image" className="w-8 h-8 opacity-40 mb-1" />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div class="bg-white border border-stone-200 rounded-xl p-3 flex flex-col md:flex-row items-center justify-between gap-3 shadow-sm">
+                                        <div class="flex items-center gap-3 pl-2">
+                                            <div class="bg-stone-50 p-2 rounded-lg text-moriah-brown">
+                                                <LucideIcon name="images" className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <p class="text-xs font-bold text-stone-700">Adicionar mais fotos</p>
+                                                <p class="text-[10px] text-stone-500">Selecione imagens .JPG, .PNG ou .WEBP</p>
+                                            </div>
+                                        </div>
+                                        <label class="cursor-pointer bg-moriah-brown text-white px-4 py-2 rounded-xl hover:bg-moriah-dark transition-all font-bold text-sm flex items-center gap-2 shadow w-full md:w-auto justify-center">
+                                            {isUploading ? <><div className="w-4 h-4 border-2 border-stone-300 border-t-white rounded-full animate-spin"></div> Enviando...</> : <><LucideIcon name="upload-cloud" className="w-4 h-4" /> Selecionar Fotos</>}
+                                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} disabled={isUploading} />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-sm font-medium text-stone-500">Descrição do Produto (Site)</label>
+                                    <button type="button" onClick={() => generateWithAI('description')} class="text-xs bg-indigo-50 text-indigo-600 font-bold px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 flex items-center gap-1 shadow-sm transition-all hover:scale-105 active:scale-95">
+                                        {isGeneratingAI === 'description' ? <span class="animate-pulse">⏳ Escrevendo texto vendedor...</span> : <><LucideIcon name="sparkles" className="w-3.5 h-3.5" /> Escrever com Inteligência Artificial</>}
+                                    </button>
+                                </div>
+                                <textarea name="description" value={formData.description} onChange={handleChange} rows="4" class="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-moriah-brown/50 outline-none leading-relaxed" placeholder="Descreva os sabores, origem e experiência do café... (Ou clique em Gerar com IA acima)"></textarea>
+                            </div>
+                            {formData.category === 'Caféé' ? (
+                                <div class="space-y-6 bg-stone-50 p-4 rounded-2xl border border-stone-200">
+                                    {/* Tamanho ÚÚnico pro Caféé */}
+                                    <div>
+                                        <label class="block text-sm font-medium text-stone-500 mb-1">Tamanho da Embalagem</label>
+                                        <select name="weight_grams" value={formData.weight_grams ?? 250} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none font-bold text-stone-700">
+                                            <option value="250">250g</option>
+                                            <option value="500">500g</option>
+                                            <option value="1000">1kg (1000g)</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Caféé Moído */}
+                                    <div class="space-y-4 pt-4 border-t border-stone-200">
+                                        <h3 class="font-bold text-stone-700">Caféé Moído (Pó)</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
+                                                <input type="number" step="0.01" name="cost_moido" value={formData.cost_moido ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none" placeholder="Ex: 15.00" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-amber-700 mb-1 font-bold">Preço de Venda (R$)</label>
+                                                <input type="number" step="0.01" name="price_moido" value={formData.price_moido ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-amber-50 border border-amber-200 rounded-xl outline-none text-amber-900 font-bold" placeholder="Ex: 40.00" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque</label>
+                                                <div class="relative">
+                                                    <input type="number" name="stock_moido" value={formData.stock_moido ?? ''} onChange={handleChange} class={`w-full px-4 py-2 bg-white border rounded-xl outline-none font-bold ${Number(formData.stock_moido) < 5 && formData.stock_moido !== '' ? 'border-red-400 text-red-600 bg-red-50' : 'border-stone-200 text-stone-800'}`} />
+                                                    {Number(formData.stock_moido) < 5 && formData.stock_moido !== '' && <span class="absolute right-3 top-2.5 text-xs text-red-500 font-bold">Estoque Baixo</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Caféé em Grãos */}
+                                    <div class="space-y-4 pt-4 border-t border-stone-200">
+                                        <h3 class="font-bold text-stone-700">Caféé em Grãos</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
+                                                <input type="number" step="0.01" name="cost" value={formData.cost ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none" placeholder="Ex: 15.00" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-emerald-700 mb-1 font-bold">Preço de Venda (R$)</label>
+                                                <input type="number" step="0.01" name="price" value={formData.price ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl outline-none text-emerald-900 font-bold" placeholder="Ex: 45.00" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-stone-500 mb-1">Estoque</label>
+                                                <div class="relative">
+                                                    <input type="number" name="stock_grao" value={formData.stock_grao ?? ''} onChange={handleChange} class={`w-full px-4 py-2 bg-white border rounded-xl outline-none font-bold ${Number(formData.stock_grao) < 5 && formData.stock_grao !== '' ? 'border-red-400 text-red-600 bg-red-50' : 'border-stone-200 text-stone-800'}`} />
+                                                    {Number(formData.stock_grao) < 5 && formData.stock_grao !== '' && <span class="absolute right-3 top-2.5 text-xs text-red-500 font-bold">Estoque Baixo</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div class="space-y-4 bg-stone-50 p-4 rounded-2xl border border-stone-200">
+                                    <h3 class="font-bold text-stone-700 border-b border-stone-200 pb-2">Informações do Produto</h3>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-stone-500 mb-1">Custo (R$)</label>
+                                            <input type="number" step="0.01" name="cost" value={formData.cost ?? ''} onChange={handleChange} required class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none" placeholder="Ex: 15.00" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-emerald-700 mb-1 font-bold">Preço de Venda (R$)</label>
+                                            <input type="number" step="0.01" name="price" value={formData.price ?? ''} onChange={handleChange} required class="w-full px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl outline-none text-emerald-900 font-bold" placeholder="Ex: 45.00" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-stone-500 mb-1">Estoque</label>
+                                            <div class="relative">
+                                                <input type="number" name="stock" value={formData.stock ?? ''} onChange={handleChange} required class={`w-full px-4 py-2 bg-white border rounded-xl outline-none font-bold ${Number(formData.stock) < 5 && formData.stock !== '' ? 'border-red-400 text-red-600 bg-red-50' : 'border-stone-200 text-stone-800'}`} />
+                                                {Number(formData.stock) < 5 && formData.stock !== '' && <span class="absolute right-3 top-2.5 text-xs text-red-500 font-bold">Estoque Baixo</span>}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-stone-500 mb-1">Peso (Gramas)</label>
+                                            <input type="number" name="weight_grams" placeholder="Ex: 250" value={formData.weight_grams ?? ''} onChange={handleChange} class="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl outline-none" />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div class="flex items-center mt-4 text-left">
+                                <label class="flex items-center gap-3 cursor-pointer p-2 bg-stone-50 border border-stone-100 rounded-xl w-full">
+                                    <input type="checkbox" name="sell_online" checked={formData.sell_online === 1} onChange={handleChange} class="w-5 h-5 text-moriah-brown bg-white border-stone-300 rounded focus:ring-moriah-brown" />
+                                    <span class="text-sm font-bold text-stone-700">Vender no E-commerce? <br /><span class="text-[10px] font-normal text-stone-400">Ative para aparecer na loja online</span></span>
+                                </label>
+                            </div>
+                            <div class="flex gap-4 pt-4">
+                                <button type="button" onClick={() => { setEditingProduct(null); setView('inventory'); }} class="flex-1 py-3 text-stone-500 font-bold hover:bg-stone-50 rounded-2xl transition-all border border-stone-200">Cancelar</button>
+                                <button type="submit" class="flex-1 py-3 bg-moriah-brown text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transition-all">{isEdit ? 'Salvar' : 'Cadastrar'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [currentUser, setCurrentUser] = useState(() => {
+                try { return JSON.parse(localStorage.getItem('moriah_current_user')); } catch { return null; }
+            });
+            const [view, setView] = useState('pos');
+            const [products, setProducts] = useState([]);
+            // Carrega produtos da API quando o usuário logar
+            useEffect(() => {
+                if (!currentUser) return; // Só busca se estáiver logado
+                const fetchProducts = async () => {
+                    try {
+                        const res = await apiFetch('/api/products');
+                        if (res.ok) {
+                            const data = await res.json();
+                            setProducts(data);
+                        }
+                    } catch (err) {
+                        console.error("Erro ao carregar produtos:", err);
+                    }
+                };
+                fetchProducts();
+            }, [currentUser]);
+
+            // SSE: sincronização de estáoque em tempo real
+            // Quando outra aba (PDV) ou o e-commerce faz uma venda,
+            // o servidor emite stock-update e o estáado local é atualizado sem reload.
+            useEffect(() => {
+                let es;
+                try {
+                    es = new EventSource('/api/sse/stock');
+                    es.addEventListener('stock-update', (e) => {
+                        const { items } = JSON.parse(e.data);
+                        setProducts(prev =>
+                            prev.map(p => {
+                                const deltaArr = items.filter(i => i.product_id === p.id);
+                                if (!deltaArr.length) return p;
+
+                                let newP = { ...p };
+                                deltaArr.forEach(delta => {
+                                    if (delta.grind === 'Pó/Moído') {
+                                        newP.stock_moido = Math.max(0, (newP.stock_moido || 0) - delta.quantity);
+                                        if (newP.stock_moido < (newP.minStock || 5)) {
+                                            addNotification('Estoque Baixo', `${newP.name} (Pó) está com apenas ${newP.stock_moido} un.`, 'warning');
+                                        }
+                                    } else if (delta.grind === 'Em Grão') {
+                                        newP.stock_grao = Math.max(0, (newP.stock_grao || 0) - delta.quantity);
+                                        if (newP.stock_grao < (newP.minStock || 5)) {
+                                            addNotification('Estoque Baixo', `${newP.name} (Grão) está com apenas ${newP.stock_grao} un.`, 'warning');
+                                        }
+                                    } else {
+                                        newP.stock = Math.max(0, (newP.stock || 0) - delta.quantity);
+                                        if (newP.stock < (newP.minStock || 5)) {
+                                            addNotification('Estoque Baixo', `${newP.name} está com apenas ${newP.stock} un.`, 'warning');
+                                        }
+                                    }
+                                });
+                                return newP;
+                            })
+                        );
+                        // Se houver itens na venda (remoto), notifica
+                        if (items.length > 0) {
+                            addNotification('Nova Venda', `Uma venda de ${items.length} itens foi processada.`, 'success');
+                        }
+                    });
+                    es.onerror = () => { /* reconexão automática pelo browser */ };
+                } catch (_) { /* SSE não disponível offline */ }
+                return () => es && es.close();
+            }, []);
+            const [sales, setSales] = useState([]);
+            const [isLoadingSales, setIsLoadingSales] = useState(false);
+
+            const fetchSales = async () => {
+                setIsLoadingSales(true);
+                try {
+                    const res = await apiFetch('/api/sales');
+                    if (res.ok) {
+                        const data = await res.json();
+                        setSales(data);
+                    }
+                } catch (err) {
+                    console.error('Erro ao carregar vendas:', err);
+                } finally {
+                    setIsLoadingSales(false);
+                }
+            };
+            const [loginLoading, setLoginLoading] = useState(false);
+            const [loginError, setLoginError] = useState('');
+            const [cart, setCart] = useState([]);
+            const [customers, setCustomers] = useState([]);
+            const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+
+            const fetchCustomers = async () => {
+                if (!currentUser) return;
+                setIsLoadingCustomers(true);
+                try {
+                    const res = await apiFetch('/api/customers');
+                    if (res.ok) {
+                        const data = await res.json();
+                        setCustomers(Array.isArray(data) ? data : []);
+                    }
+                } catch (err) { console.error("Erro ao buscar clientes:", err); }
+                finally { setIsLoadingCustomers(false); }
+            };
+
+            useEffect(() => {
+                if (view === 'customers') fetchCustomers();
+            }, [view]);
+
+            const [searchTerm, setSearchTerm] = useState('');
+            const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+            const [isPixModalOpen, setIsPixModalOpen] = useState(false);
+            const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+            const [discount, setDiscount] = useState(0);
+            const [currentPixData, setCurrentPixData] = useState({ payload: '', total: 0 });
+            const [lastSale, setLastSale] = useState(null);
+            const [customerPhone, setCustomerPhone] = useState('');
+            const [editingProduct, setEditingProduct] = useState(null);
+            const [periodFilter, setPeriodFilter] = useState('always');
+            const [infiniteInstallments, setInfiniteInstallments] = useState(1);
+            const [originFilter, setOriginFilter] = useState('all'); // all, fisico, online
+            const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+            const [grindPickerProduct, setGrindPickerProduct] = useState(null);
+            const [dashData, setDashData] = useState(null);
+            const [dashLoading, setDashLoading] = useState(false);
+            const [isAsaasModalOpen, setIsAsaasModalOpen] = useState(false);
+            const [currentAsaasCharge, setCurrentAsaasCharge] = useState(null); // { payment_id, invoiceUrl, total, label }
+            const [asaasPolling, setAsaasPolling] = useState(null); // interval ref
+            const [asaasPaid, setAsaasPaid] = useState(false);
+            const [showMachineSubmenu, setShowMachineSubmenu] = useState(false);
+            const [ipWaiting, setIpWaiting] = useState(null); // { sale_id, method }
+            const ipPollingRef = React.useRef(null);
+            const [siteSettings, setSiteSettings] = useState({
+                hero_title: '', hero_subtitle: '', hero_text: '', hero_video: '',
+                about_title: '', about_subtitle: '', about_text_1: '', about_text_2: '', about_image: ''
+            });
+            const [videoFile, setVideoFile] = useState(null);
+            const [imageFile, setImageFile] = useState(null);
+            const [notifications, setNotifications] = useState(() => {
+                const saved = localStorage.getItem('moriah_notifications');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+            const addNotification = (title, message, type = 'info') => {
+                const newNotif = {
+                    id: Date.now(),
+                    title,
+                    message,
+                    type, // 'success', 'warning', 'info', 'error'
+                    read: false,
+                    date: new Date().toISOString()
+                };
+                setNotifications(prev => [newNotif, ...prev].slice(0, 30));
+            };
+
+            useEffect(() => {
+                localStorage.setItem('moriah_notifications', JSON.stringify(notifications));
+            }, [notifications]);
+
+            // Carrega configurações do site ao abrir a aba (ou no início)
+            useEffect(() => {
+                apiFetch('/api/site-settings')
+                    .then(res => res.json())
+                    .then(data => {
+                        const sanitizedAdminData = {};
+                        if (data) {
+                            Object.keys(data).forEach(key => {
+                                sanitizedAdminData[key] = data[key] || '';
+                            });
+                            setSiteSettings(sanitizedAdminData);
+                        }
+                    })
+                    .catch(err => console.error("Erro config site:", err));
+            }, []);
+
+            // Carrega usuários apenas em settings
+            const [users, setUsers] = useState([]);
+
+            // Persiste sessão local (só o objeto do usuário, sem senha)
+            useEffect(() => {
+                if (currentUser) localStorage.setItem('moriah_current_user', JSON.stringify(currentUser));
+                else localStorage.removeItem('moriah_current_user');
+            }, [currentUser]);
+
+            // Detecta retorno do InfinitePay (?ip_paid=sale_id na URL) ou retorno nativo do app (?tap_result=1&sale_id=...)
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                const paidId = params.get('ip_paid');
+                const tapResult = params.get('tap_result');
+                const saleId = params.get('sale_id');
+                const targetId = saleId || paidId;
+
+                console.log("[PDV] Verificando retorno InfinitePay:", { targetId, tapResult });
+
+                if (targetId) {
+                    // Mantém os parâmetros na URL até processar, mas limpa para não entrar em loop se o dev recarregar manualmente
+                    // window.history.replaceState({}, '', window.location.pathname); 
+
+                    const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
+
+                    apiFetch(`/api/pdv/infinitepay/status/${targetId}`)
+                        .then(r => r.json())
+                        .then(data => {
+                            console.log("[PDV] Status do pagamento:", data);
+                            if (data.paid) {
+                                setCart([]);
+                                setDiscount(0);
+                                if (pending) {
+                                    setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
+                                }
+                                setIsSuccessModalOpen(true);
+                                // Agora sim limpamos o estáado pendente e a URL
+                                localStorage.removeItem('ip_pending');
+                                window.history.replaceState({}, '', window.location.pathname);
+                            } else {
+                                // Se for tap_result=1 mas não deu pago, o usuário pode ter cancelado no app
+                                if (tapResult) {
+                                    alert('Pagamento cancelado ou não aprovado na maquininha.');
+                                    if (pending && pending.cart) {
+                                        setCart(pending.cart);
+                                    }
+                                    // Limpa para permitir nova tentativa
+                                    localStorage.removeItem('ip_pending');
+                                    window.history.replaceState({}, '', window.location.pathname);
+                                }
+                            }
+                        })
+                        .catch(err => {
+                            console.error("[PDV] Erro ao verificar status:", err);
+                            // Em caso de erro de rede, não limpamos o pending para tentar novamente se recarregar
+                        });
+                }
+            }, [currentUser]); // Adiciona currentUser para garantir que roda quando a sessão estáabilizar
+
+            // Busca vendas do banco de dados ao abrir a aba de vendas
+            // Auto-refresh a cada 30s para capturar pedidos online automaticamente
+            useEffect(() => {
+                if (view === 'sales') {
+                    fetchSales();
+                    const interval = setInterval(() => fetchSales(), 30000);
+                    return () => clearInterval(interval);
+                }
+            }, [view]);
+
+            // Busca usuários do banco ao abrir as configurações
+            useEffect(() => {
+                if (view !== 'settings') return;
+                apiFetch('/api/users').then(r => r.json()).then(data => setUsers(Array.isArray(data) ? data : [])).catch(() => { });
+            }, [view]);
+
+            // Busca dados do dashboard ao abrir o painel
+            useEffect(() => {
+                if (view !== 'dashboard') return;
+                setDashLoading(true);
+                apiFetch('/api/dashboard')
+                    .then(r => r.json())
+                    .then(d => { setDashData(d); setDashLoading(false); })
+                    .catch(() => setDashLoading(false));
+            }, [view]);
+
+            const logoUrl = 'Verde.png';
+
+            const stats = useMemo(() => {
+                const today = new Date().toLocaleDateString();
+                const todaySales = sales.filter(s => new Date(s.created_at || s.date).toLocaleDateString() === today);
+                const revenue = todaySales.reduce((acc, curr) => acc + curr.total, 0);
+                const lowStock = products.filter(p => p.stock < p.minStock);
+                return { revenue, lowStockCount: lowStock.length };
+            }, [sales, products]);
+
+            const addToCart = (product, grind = null) => {
+                let available = product.stock;
+                if (grind === 'moido') available = product.stock_moido || 0;
+                else if (grind === 'grao') available = product.stock_grao || 0;
+
+                if (available <= 0) {
+                    alert('Estoque insuficiente para estáa variação.');
+                    return;
+                }
+
+                const price = grind === 'moido' && parseFloat(product.price_moido) > 0
+                    ? parseFloat(product.price_moido)
+                    : parseFloat(product.price);
+                const cartKey = grind ? `${product.id}-${grind}` : String(product.id);
+                const displayName = grind === 'moido'
+                    ? `${product.name} (Pó/Moído)`
+                    : grind === 'grao'
+                        ? `${product.name} (Grão)`
+                        : product.name;
+
+                const grindLabel = grind === 'moido' ? 'Pó/Moído' : grind === 'grao' ? 'Em Grão' : null;
+
+                setCart(curr => {
+                    const existing = curr.find(i => i.cartKey === cartKey);
+                    if (existing) return curr.map(i => i.cartKey === cartKey ? { ...i, quantity: i.quantity + 1 } : i);
+                    return [...curr, { ...product, cartKey, price, name: displayName, quantity: 1, grind: grindLabel }];
+                });
+            };
+
+            const removeFromCart = (cartKey) => setCart(curr => curr.filter(i => i.cartKey !== cartKey));
+            const updateCartQuantity = (cartKey, delta) => {
+                setCart(curr => curr.map(i => {
+                    if (i.cartKey === cartKey) {
+                        const newQty = Math.max(1, i.quantity + delta);
+                        return { ...i, quantity: newQty };
+                    }
+                    return i;
+                }));
+            };
+
+            const generatePixPayload = (amount) => {
+                const pad = (n) => n.toString().padStart(2, '0');
+                const key = "63644739000156";
+                const name = "MORIAH CAFE";
+                const city = "SAO PAULO";
+
+                let payload = "000201";
+                let merchantInfo = "0014br.gov.bcb.pix" + "0114" + key;
+                payload += "26" + pad(merchantInfo.length) + merchantInfo;
+                payload += "520400005303986";
+                let amtStr = amount.toFixed(2);
+                payload += "54" + pad(amtStr.length) + amtStr;
+                payload += "5802BR";
+                payload += "59" + pad(name.length) + name;
+                payload += "60" + pad(city.length) + city;
+                payload += "62070503***6304";
+
+                let crc = 0xFFFF;
+                for (let i = 0; i < payload.length; i++) {
+                    crc ^= (payload.charCodeAt(i) << 8);
+                    for (let j = 0; j < 8; j++) {
+                        crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : (crc << 1);
+                    }
+                }
+                const crcHex = (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+                return payload + crcHex;
+            };
+
+            const finalizeSale = async (method) => {
+                const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
+                const total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
+
+                if (method === 'PIX' && !isPixModalOpen) {
+                    const payload = generatePixPayload(total);
+                    setCurrentPixData({ payload, total });
+                    setIsPixModalOpen(true);
+                    return;
+                }
+
+                try {
+                    const res = await apiFetch('/api/sales', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            seller: currentUser?.name || currentUser?.username || 'PDV',
+                            items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price, grind: i.grind })),
+                            subtotal,
+                            discount,
+                            total,
+                            method,
+                            origin: 'Físico'
+                        })
+                    });
+
+                    if (!res.ok) {
+                        const err = await res.json();
+                        alert('Erro ao salvar venda: ' + (err.error || 'Tente novamente'));
+                        return;
+                    }
+
+                    // Atualiza o estáoque localmente para feedback imediato
+                    setProducts(curr => curr.map(p => {
+                        const totalQty = cart.filter(ci => ci.id === p.id).reduce((sum, ci) => sum + ci.quantity, 0);
+                        return totalQty > 0 ? { ...p, stock: p.stock - totalQty } : p;
+                    }));
+
+                    setCart([]);
+                    setDiscount(0);
+                    setIsCheckoutOpen(false);
+                    setIsPixModalOpen(false);
+                    setLastSale({ total, method, items: cart });
+                    addNotification('Venda Finalizada', `Venda de R$ ${total.toFixed(2)} confirmada em ${method}.`, 'success');
+                    setIsSuccessModalOpen(true);
+
+                } catch (error) {
+                    console.error('Erro ao finalizar venda:', error);
+                    alert('Falha de conexão com o servidor. Verifique sua rede.');
+                }
+            };
+
+            // ─── InfinitePay: abre checkout + polling de confirmação ──────────────
+            const handleInfinitePay = async (cardType) => {
+                const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
+                let total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
+                // Repasse obrigatório de taxa InfinitePay padrão (1 Dia Útil - Até 20k)
+                // Usando cálculo "Por dentro" para o cliente pagar a taxa exata e o lojista receber o "total" bruto
+                // Fórmula: Valor a Cobrar = Valor Liquido / (1 - Taxa)
+                let appliedRate = 0;
+                let finalInstallments = '1';
+
+                if (cardType === 'debit') {
+                    appliedRate = 0.0137; // 1.37% (Débito - 1 Dia Útil)
+                } else if (cardType === 'credit') {
+                    finalInstallments = String(infiniteInstallments);
+                    // Tabela de juros InfinitePay (Tap to Pay - 1 Dia Útil - Faturamento até 20k)
+                    const creditRates = {
+                        1: 0.0315, // 3.15% à vista
+                        2: 0.0539, 3: 0.0612, 4: 0.0685,
+                        5: 0.0757, 6: 0.0828, 7: 0.0899,
+                        8: 0.0969, 9: 0.1038, 10: 0.1106,
+                        11: 0.1174, 12: 0.1240
+                    };
+                    appliedRate = creditRates[infiniteInstallments] || 0.0315;
+                }
+                total = parseFloat((total / (1 - appliedRate)).toFixed(2));
+
+                try {
+                    const res = await apiFetch('/api/pdv/infinitepay/tap', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            total,
+                            cardType,
+                            items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price, grind: i.grind }))
+                        })
+                    });
+
+                    if (!res.ok) {
+                        const err = await res.json();
+                        alert('Erro: ' + (err.error || 'Tente novamente'));
+                        return;
+                    }
+
+                    const { sale_id } = await res.json();
+                    const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
+
+                    // Parâmetros do Deep Link nativo (InfiniteTap) repassados pela InfinitePay
+                    const amountCents = Math.round(total * 100);
+                    const infinitePayMethod = cardType; // 'credit' ou 'debit'
+                    const installments = finalInstallments;
+                    const orderId = `moriah-pdv-${sale_id}`;
+                    const resultUrl = encodeURIComponent(`${window.location.origin}/?tap_result=1&sale_id=${sale_id}`);
+                    const appClientReferrer = 'MoriahPDV';
+                    const afForceDeeplink = 'true';
+
+                    const checkout_url = `infinitepaydash://infinitetap-app?amount=${amountCents}&payment_method=${infinitePayMethod}&installments=${installments}&order_id=${orderId}&result_url=${resultUrl}&app_client_referrer=${appClientReferrer}&af_force_deeplink=${afForceDeeplink}`;
+
+                    // Salva o carrinho provisoriamente para caso o iOS/Android recarregue a página ao voltar do deep link
+                    localStorage.setItem('ip_pending', JSON.stringify({ total, method: methodLabel, cart }));
+
+                    // Em vez de navegar direto (bloqueado pelo android em alguns casos e abre web), 
+                    // mostramos um modal onde o operador tem que clicar explicitamente para abrir a maquininha
+                    setIpWaiting({ sale_id, method: methodLabel, total, checkout_url });
+                    setIsCheckoutOpen(false);
+
+                    ipPollingRef.current = setInterval(async () => {
+                        try {
+                            const statusRes = await apiFetch(`/api/pdv/infinitepay/status/${sale_id}`);
+                            const data = await statusRes.json();
+                            if (data.paid) {
+                                clearInterval(ipPollingRef.current);
+                                setIpWaiting(null);
+                                setCart([]);
+                                setDiscount(0);
+                                setLastSale({ id: sale_id, total, method: methodLabel, items: cart });
+                                addNotification('Venda Confirmada', `InfinitePay: R$ ${total.toFixed(2)} recebido.`, 'success');
+                                setIsSuccessModalOpen(true);
+                            }
+                        } catch (_) { }
+                    }, 3000);
+
+                } catch (error) {
+                    alert('Falha de conexão. Verifique sua rede.');
+                }
+            };
+
+            const cancelInfinitePay = async () => {
+                clearInterval(ipPollingRef.current);
+                // Confirma manualmente se o operador sabe que foi pago
+                if (ipWaiting && confirm('O pagamento foi processado na maquininha?')) {
+                    await apiFetch(`/api/pdv/sales/${ipWaiting.sale_id}/confirm`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ method: ipWaiting.method })
+                    });
+                    setCart([]);
+                    setDiscount(0);
+                    setLastSale({ id: ipWaiting.sale_id, total: ipWaiting.total, method: ipWaiting.method, items: cart });
+                    addNotification('Venda Confirmada (Manual)', `Venda de R$ ${ipWaiting.total.toFixed(2)} confirmada manualmente.`, 'info');
+                    setIsSuccessModalOpen(true);
+                }
+                setIpWaiting(null);
+            };
+
+            const sendWhatsAppReceipt = async () => {
+                if (!customerPhone || !lastSale) return;
+                const cleanPhone = customerPhone.replace(/\D/g, '');
+
+                try {
+                    const res = await apiFetch('/api/pdv/send-receipt', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            phone: cleanPhone,
+                            sale_id: lastSale.id,
+                            message: null // O backend gera o padrão Moriah
+                        })
+                    });
+
+                    if (res.ok) {
+                        alert('✅ Recibo enviado via WhatsApp!');
+                        setIsSuccessModalOpen(false);
+                        setCustomerPhone('');
+                        setView('pos');
+                    } else {
+                        const err = await res.json();
+                        alert('Falha no WhatsApp: ' + (err.error || 'Verifique a API'));
+                        // Fallback para link manual se a API falhar (opcional)
+                        const url = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(`Recibo Moriah: ${window.location.origin}/api/pdv/receipt/${lastSale.id}`)}`;
+                        window.open(url, '_blank');
+                    }
+                } catch (err) {
+                    console.error("Erro zap:", err);
+                    alert('Erro ao conectar com a API de WhatsApp.');
+                }
+            };
+
+            const triggerMarketing = async () => {
+                const message = prompt('Digite a mensagem de marketing:', 'Oláá! Passando para lembrar que seu Caféé Moriah deve estáar acabando. Que tal garantir um pacote novo hoje? ☕✨');
+                if (!message) return;
+
+                if (!confirm('Deseja disparar estáa mensagem para todos os clientes elegíveis (regra de 15 dias)?')) return;
+
+                try {
+                    const res = await apiFetch('/api/customers/bulk-marketing', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message })
+                    });
+                    const data = await res.json();
+                    alert(data.message);
+                    fetchCustomers();
+                } catch (err) { alert('Erro ao disparar marketing.'); }
+            };
+
+            const deleteProduct = async (id) => {
+                if (confirm('Tem certeza que deseja excluir este produto?')) {
+                    try {
+                        const res = await apiFetch(`/api/products/${id}`, { method: 'DELETE' });
+                        if (res.ok) {
+                            setProducts(curr => curr.filter(p => p.id !== id));
+                        }
+                    } catch (error) {
+                        console.error('Erro ao excluir:', error);
+                        alert('Erro ao excluir produto.');
+                    }
+                }
+            };
+
+            const generateLabel = async (sale_id) => {
+                if (!confirm('Confirmar Geração de Etiqueta Logística? As taxas poderão ser cobradas do Saldo da Conta de Envios.')) return;
+                try {
+                    const res = await apiFetch('/api/shipping/generate-label', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sale_id })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        const msg = data.simulated
+                            ? `Etiqueta SIMULADA (sem endereço completo ou token ME).\nRastreio: ${data.tracking_code}\n\nPara etiqueta real: configure MELHORENVIO_TOKEN e garanta que o cliente preencheu o endereço completo.`
+                            : `✅ Etiqueta Melhor Envio gerada!\nRastreio: ${data.tracking_code}\n\nA etiqueta será baixada agora.`;
+                        alert(msg);
+                        if (data.label_url) window.open(data.label_url, '_blank');
+                        // Força a atualização da lista para exibir as vendas da DB SQLite real, incluindo status de envio novo
+                        const reload = await apiFetch('/api/sales');
+                        const salesData = await reload.json();
+                        setSales(salesData);
+                    } else {
+                        alert('Logística (' + data.error + ')');
+                    }
+                } catch (err) {
+                    alert('Falha de Integração com Gateway Logístico.');
+                }
+            };
+
+            const finalizeAsaasCharge = async (billingType) => {
+                const subtotal = cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
+                const total = parseFloat((subtotal * (1 - (discount / 100))).toFixed(2));
+                const label = billingType === 'CREDIT_CARD' ? 'Crédito Asaas' : billingType === 'DEBIT_CARD' ? 'Débito Asaas' : 'Cartão Asaas';
+                setIsCheckoutOpen(false);
+                setAsaasPaid(false);
+                try {
+                    const res = await apiFetch('/api/pdv/charge', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ customerName: 'Cliente PDV', total, billingType })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) { alert(data.error || 'Erro ao criar cobrança.'); setIsCheckoutOpen(true); return; }
+                    setCurrentAsaasCharge({ payment_id: data.payment_id, invoiceUrl: data.invoiceUrl, total, label });
+                    setIsAsaasModalOpen(true);
+                    // Polling a cada 5s por até 10 minutos
+                    let attempts = 0;
+                    const maxAttempts = 120;
+                    const interval = setInterval(async () => {
+                        attempts++;
+                        if (attempts > maxAttempts) {
+                            clearInterval(interval);
+                            setAsaasPolling(null);
+                            alert('Tempo esgotado. Confirme manualmente se o cliente pagou.');
+                            return;
+                        }
+                        try {
+                            const sr = await apiFetch(`/api/pdv/payment-status/${data.payment_id}`);
+                            const sd = await sr.json();
+                            if (sd.paid) {
+                                clearInterval(interval);
+                                setAsaasPolling(null);
+                                setAsaasPaid(true);
+                            }
+                        } catch (e) { /* ignora erro de rede no polling */ }
+                    }, 5000);
+                    setAsaasPolling(interval);
+                } catch (err) {
+                    alert('Falha ao conectar com servidor.');
+                    setIsCheckoutOpen(true);
+                }
+            };
+
+            const confirmAsaasPayment = async (label) => {
+                if (asaasPolling) { clearInterval(asaasPolling); setAsaasPolling(null); }
+                setIsAsaasModalOpen(false);
+                await finalizeSale(label || currentAsaasCharge?.label || 'Cartão Asaas');
+            };
+
+            const renderView = (overrideView) => {
+                const currentView = overrideView || view;
+                switch (currentView) {
+                    case 'dashboard': {
+                        const fmtR = v => `R$ ${parseFloat(v || 0).toFixed(2).replace('.', ',')}`;
+                        const fmtDt = dt => { const d = new Date(dt); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); };
+                        return (
+                            <div class="space-y-4 animate-in fade-in duration-500">
+                                <h2 class="text-xl font-bold text-stone-900">Dashboard</h2>
+                                {dashLoading && <div class="flex items-center gap-3 py-8 text-stone-500"><div class="w-5 h-5 border-2 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>Carregando dados...</div>}
+                                {dashData && !dashLoading && (
+                                    <div class="space-y-4">
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                            <div class="bg-white rounded-2xl p-4 shadow-sm border border-stone-100">
+                                                <p class="text-[10px] text-stone-400 uppercase tracking-wider mb-1">Hoje</p>
+                                                <p class="text-lg font-bold text-emerald-600 truncate">{fmtR(dashData.revenue?.today)}</p>
+                                            </div>
+                                            <div class="bg-white rounded-2xl p-4 shadow-sm border border-stone-100">
+                                                <p class="text-[10px] text-stone-400 uppercase tracking-wider mb-1">Este Mês</p>
+                                                <p class="text-lg font-bold text-moriah-brown truncate">{fmtR(dashData.revenue?.month)}</p>
+                                            </div>
+                                            <div class="bg-white rounded-2xl p-4 shadow-sm border border-stone-100">
+                                                <p class="text-[10px] text-stone-400 uppercase tracking-wider mb-1">Aguardando</p>
+                                                <p class="text-lg font-bold text-amber-500">{dashData.pending?.count || 0} pedido{dashData.pending?.count !== 1 ? 's' : ''}</p>
+                                                <p class="text-[10px] text-stone-400 mt-0.5 truncate">{fmtR(dashData.pending?.total)}</p>
+                                            </div>
+                                            <div class="bg-white rounded-2xl p-4 shadow-sm border border-stone-100">
+                                                <p class="text-[10px] text-stone-400 uppercase tracking-wider mb-1">Estoque Baixo</p>
+                                                <p class="text-lg font-bold text-red-500">{(dashData.lowStock || []).length} produto{(dashData.lowStock || []).length !== 1 ? 's' : ''}</p>
+                                            </div>
+                                        </div>
+                                        {(dashData.pending?.sales || []).length > 0 && (
+                                            <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
+                                                <div class="px-4 py-3 border-b border-stone-100 flex items-center gap-2">
+                                                    <LucideIcon name="clock" className="w-4 h-4 text-amber-500" />
+                                                    <h3 class="font-bold text-sm text-stone-800">Aguardando Pagamento</h3>
+                                                </div>
+                                                <div class="divide-y divide-stone-50">
+                                                    {(dashData.pending?.sales || []).map(s => (
+                                                        <div key={s.id} class="px-4 py-3 flex items-center justify-between gap-2">
+                                                            <div class="min-w-0">
+                                                                <p class="font-medium text-sm text-stone-800 truncate">{s.customer_name}</p>
+                                                                <p class="text-xs text-stone-400">{fmtDt(s.created_at)}</p>
+                                                            </div>
+                                                            <div class="text-right shrink-0">
+                                                                <p class="font-bold text-sm text-moriah-brown">{fmtR(s.total)}</p>
+                                                                <span class="text-[10px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">{s.status}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {(dashData.lowStock || []).length > 0 && (
+                                            <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
+                                                <div class="px-4 py-3 border-b border-stone-100 flex items-center gap-2">
+                                                    <LucideIcon name="alert-triangle" className="w-4 h-4 text-red-500" />
+                                                    <h3 class="font-bold text-sm text-stone-800">Estoque Crítico</h3>
+                                                </div>
+                                                <div class="divide-y divide-stone-50">
+                                                    {(dashData.lowStock || []).map(p => (
+                                                        <div key={p.id} class="px-4 py-3 flex items-center justify-between gap-2">
+                                                            <div class="min-w-0">
+                                                                <p class="font-medium text-sm text-stone-800 truncate">{p.name}</p>
+                                                                <p class="text-[10px] text-stone-400">{p.category}</p>
+                                                            </div>
+                                                            <span class={`text-sm font-bold px-3 py-1 rounded-full shrink-0 ${p.stock === 0 ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>
+                                                                {p.stock === 0 ? 'Esgotado' : `${p.stock} un.`}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {(dashData.recentSales || []).length > 0 && (
+                                            <div class="bg-white rounded-2xl shadow-sm border border-stone-100 overflow-hidden">
+                                                <div class="px-4 py-3 border-b border-stone-100 flex items-center gap-2">
+                                                    <LucideIcon name="check-circle" className="w-4 h-4 text-emerald-500" />
+                                                    <h3 class="font-bold text-sm text-stone-800">Últimas Vendas Pagas</h3>
+                                                </div>
+                                                <div class="divide-y divide-stone-50">
+                                                    {(dashData.recentSales || []).map(s => (
+                                                        <div key={s.id} class="px-4 py-3 flex items-center justify-between gap-2">
+                                                            <div class="min-w-0">
+                                                                <p class="font-medium text-sm text-stone-800 truncate">{s.customer_name || 'Cliente PDV'}</p>
+                                                                <p class="text-xs text-stone-400">{fmtDt(s.created_at)} · {s.method || '—'}</p>
+                                                            </div>
+                                                            <p class="font-bold text-sm text-emerald-600 shrink-0">{fmtR(s.total)}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    }
+
+                    case 'pos': return (
+                        <div class="flex flex-col lg:flex-row gap-6 h-[calc(100dvh-180px)] md:h-[calc(100dvh-96px)] animate-in fade-in duration-500 relative">
+                            {cart.length > 0 && (
+                                <button onClick={() => setIsMobileCartOpen(true)} class="lg:hidden fixed bottom-24 right-6 z-40 bg-moriah-brown text-white p-4 rounded-full shadow-2xl flex items-center gap-2 animate-bounce">
+                                    <LucideIcon name="shopping-cart" className="w-6 h-6" />
+                                    <span class="font-bold">{cart.reduce((acc, curr) => acc + curr.quantity, 0)}</span>
+                                </button>
+                            )}
+                            <div class="flex-1 space-y-4 overflow-y-auto pr-2">
+                                <div class="relative">
+                                    <div class="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"><LucideIcon name="search" className="w-5 h-5" /></div>
+                                    <input type="text" placeholder="Buscar produto por nome ou SKU..." class="w-full pl-12 pr-4 py-3 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                                </div>
+                                <div class="product-grid">
+                                    {products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase())).map(p => {
+                                        const hasTwoGrinds = (p.category === 'Caféé') && parseFloat(p.price_moido) > 0;
+                                        const handleTap = () => {
+                                            if (p.stock <= 0) return;
+                                            if (hasTwoGrinds) setGrindPickerProduct(p);
+                                            else addToCart(p);
+                                        };
+                                        return (
+                                            <div key={p.id}
+                                                role="button"
+                                                onPointerUp={handleTap}
+                                                class={`flex flex-col justify-between bg-white p-4 rounded-2xl shadow-sm border border-stone-100 active:border-moriah-brown active:bg-stone-50 transition-all h-32 select-none ${p.stock <= 0 ? 'opacity-40 pointer-events-none' : 'cursor-pointer'}`}
+                                            >
+                                                <div class="flex justify-between items-start gap-1 w-full">
+                                                    <p class="font-bold text-sm text-stone-900 leading-tight flex-1 line-clamp-2">{p.name}</p>
+                                                    {hasTwoGrinds && <span class="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full shrink-0 font-bold">☕</span>}
+                                                </div>
+                                                <div class="flex justify-between items-center mt-1 w-full">
+                                                    <span class="text-moriah-brown font-bold text-base">R$ {parseFloat(p.price).toFixed(2)}</span>
+                                                    <div class="flex flex-col items-end gap-1">
+                                                        {(hasTwoGrinds || p.stock_grao > 0 || p.stock_moido > 0) ? (
+                                                            <>
+                                                                <span class="text-[9px] px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-md font-bold">Grão: {p.stock_grao || 0}</span>
+                                                                <span class="text-[9px] px-1.5 py-0.5 bg-stone-50 text-stone-600 rounded-md font-bold">Pó: {p.stock_moido || 0}</span>
+                                                            </>
+                                                        ) : (
+                                                            <span class={`text-[11px] px-2.5 py-1 rounded-full font-black ${p.stock < p.minStock ? 'bg-red-500 text-white ring-4 ring-red-500/10' : 'bg-emerald-50 text-emerald-700 ring-4 ring-emerald-500/10'}`}>Estoque: {p.stock} {p.stock <= 0 ? '(ESGOTADO)' : ''}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div class={`fixed lg:static inset-0 lg:inset-auto z-[60] lg:z-0 w-full lg:w-96 bg-white ${isMobileCartOpen ? 'translate-y-0' : 'translate-y-full lg:translate-y-0'} transition-transform duration-300 ease-in-out rounded-t-3xl lg:rounded-3xl shadow-2xl lg:shadow-lg border-t lg:border border-stone-100 flex flex-col overflow-hidden text-stone-900`}>
+                                <div class="p-6 border-b border-stone-50 flex justify-between items-center bg-stone-50 md:bg-white">
+                                    <div class="flex items-center gap-2 text-stone-900">
+                                        <button onClick={() => setIsMobileCartOpen(false)} class="lg:hidden p-2 -ml-2 text-stone-400 hover:text-stone-600"><LucideIcon name="chevron-down" className="w-6 h-6" /></button>
+                                        <h3 class="font-bold text-xl">Carrinho</h3>
+                                    </div>
+                                    <button onClick={() => setCart([])} class="p-2 text-stone-400 hover:text-red-500 transition-colors"><LucideIcon name="trash-2" className="w-5 h-5" /></button>
+                                </div>
+                                <div class="flex-1 overflow-y-auto p-6 space-y-4">
+                                    {cart.map(item => (
+                                        <div key={item.cartKey || item.id} class="flex gap-3 items-center">
+                                            <div class="flex-1 text-left">
+                                                <p class="font-bold text-sm">{item.name}</p>
+                                                <p class="text-xs text-stone-400">R$ {parseFloat(item.price).toFixed(2)} un.</p>
+                                            </div>
+                                            <div class="flex items-center gap-3 bg-stone-100 rounded-full px-2 py-1">
+                                                <button onClick={() => updateCartQuantity(item.cartKey || String(item.id), -1)} class="w-6 h-6 flex items-center justify-center font-bold">-</button>
+                                                <span class="font-bold text-sm">{item.quantity}</span>
+                                                <button onClick={() => updateCartQuantity(item.cartKey || String(item.id), 1)} class="w-6 h-6 flex items-center justify-center font-bold">+</button>
+                                            </div>
+                                            <p class="font-bold w-20 text-right">R$ {(parseFloat(item.price) * item.quantity).toFixed(2)}</p>
+                                        </div>
+                                    ))}
+                                    {cart.length === 0 && (
+                                        <div class="text-center py-12 text-stone-300 flex flex-col items-center">
+                                            <LucideIcon name="shopping-cart" className="w-12 h-12 mb-2 opacity-20" />
+                                            <p>Carrinho vazio</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div class="p-6 bg-stone-50 border-t border-stone-100 space-y-4">
+                                    <div class="flex justify-between items-center text-xl font-bold">
+                                        <span>Total</span>
+                                        <span class="text-moriah-brown">R$ {cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0).toFixed(2)}</span>
+                                    </div>
+                                    <button
+                                        disabled={cart.length === 0}
+                                        onClick={() => { setIsMobileCartOpen(false); setIsCheckoutOpen(true); }}
+                                        class="w-full py-4 bg-moriah-brown text-white rounded-2xl font-bold hover:bg-moriah-dark transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        <span>Finalizar Venda</span><LucideIcon name="arrow-right" className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+                            {isCheckoutOpen && (
+                                <div class="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center sm:p-4">
+                                    <div class="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-y-auto max-h-[78vh] sm:max-h-[90vh] animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+                                        <div class="p-5 border-b border-stone-100 flex justify-between items-center text-stone-900 sticky top-0 bg-white z-10">
+                                            <h3 class="text-lg font-bold">Finalizar Venda</h3>
+                                            <button onClick={() => setIsCheckoutOpen(false)} class="text-stone-400 hover:text-stone-600 p-2"><LucideIcon name="x" className="w-6 h-6" /></button>
+                                        </div>
+                                        <div class="p-5 space-y-4 text-stone-900">
+                                            <div class="space-y-2">
+                                                <div class="flex justify-between text-stone-500 text-sm">
+                                                    <span>Subtotal</span><span>R$ {cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0).toFixed(2)}</span>
+                                                </div>
+                                                <div class="flex items-center gap-4">
+                                                    <span class="text-stone-500 flex-1 text-sm">Desconto (%)</span>
+                                                    <div class="w-24">
+                                                        <input type="number" min="0" max="100" value={discount} onChange={(e) => setDiscount(Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))} class="w-full px-3 py-2 bg-stone-100 border border-stone-200 rounded-xl text-right font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50 text-sm" />
+                                                    </div>
+                                                </div>
+                                                <div class="flex justify-between text-xl font-black text-moriah-brown pt-3 border-t border-dashed border-stone-200">
+                                                    <span>Total Final</span><span>R$ {(cart.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0) * (1 - discount / 100)).toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                            <div class="space-y-2">
+                                                <p class="text-xs font-bold text-stone-400 uppercase tracking-widestá text-left">Forma de Pagamento</p>
+                                                <div class="grid grid-cols-1 gap-2">
+                                                    <button onClick={() => finalizeSale('Dinheiro')} class="flex items-center justify-between p-3.5 bg-stone-50 hover:bg-stone-100 rounded-2xl border border-stone-200 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="banknote" className="w-5 h-5 text-emerald-600" /><span class="font-bold">Dinheiro</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-stone-300 group-hover:text-stone-500" />
+                                                    </button>
+                                                    {/* InfinitePay — Maquininha no celular */}
+                                                    <button onClick={() => handleInfinitePay('debit')} class="flex items-center justify-between p-3.5 bg-blue-50 hover:bg-blue-100 rounded-2xl border border-blue-200 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="credit-card" className="w-5 h-5 text-blue-600" /><div class="text-left"><span class="font-bold text-blue-700">Débito</span><p class="text-[10px] text-stone-400">InfinitePay • aproxime o cartão</p></div></div><LucideIcon name="chevron-right" className="w-5 h-5 text-blue-300 group-hover:text-blue-500" />
+                                                    </button>
+
+                                                    <div class="flex flex-col bg-purple-50 rounded-2xl border border-purple-200 p-3.5 hover:bg-purple-100 transition-all group">
+                                                        <div class="flex items-center justify-between w-full">
+                                                            <div class="flex items-center gap-3 w-full">
+                                                                <LucideIcon name="credit-card" className="w-5 h-5 text-purple-600" />
+                                                                <div class="text-left flex flex-col gap-1 w-full">
+                                                                    <span class="font-bold text-purple-700">Crédito</span>
+                                                                    <div class="flex items-center justify-between w-full">
+                                                                        <div class="flex items-center gap-2">
+                                                                            <select value={infiniteInstallments} onChange={(e) => setInfiniteInstallments(Number(e.target.value))} class="text-xs bg-white border border-purple-200 rounded px-2 py-0.5 text-purple-900 font-bold outline-none cursor-pointer">
+                                                                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => <option key={n} value={n}>{n}x</option>)}
+                                                                            </select>
+                                                                            <span class="text-[10px] text-stone-500 hidden sm:inline">InfinitePay • aproxime o cartão</span>
+                                                                        </div>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleInfinitePay('credit'); }} class="bg-purple-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-purple-700 transition">Cobrar</button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button onClick={() => finalizeSale('PIX')} class="flex items-center justify-between p-3.5 bg-teal-50 hover:bg-teal-100 rounded-2xl border border-teal-200 transition-all group">
+                                                        <div class="flex items-center gap-3"><LucideIcon name="qr-code" className="w-5 h-5 text-teal-600" /><span class="font-bold text-teal-800">PIX</span></div><LucideIcon name="chevron-right" className="w-5 h-5 text-teal-300 group-hover:text-teal-500" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="h-4"></div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Modal InfinitePay — aguardando confirmação */}
+                            {ipWaiting && (
+                                <div class="fixed inset-0 bg-black/80 backdrop-blur-md z-[70] flex items-center justify-center p-4">
+                                    <div class="bg-white w-[90%] max-w-sm rounded-[28px] shadow-2xl p-8 flex flex-col items-center text-center gap-4">
+                                        <div class="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center">
+                                            <LucideIcon name="credit-card" className="w-8 h-8 text-blue-600" />
+                                        </div>
+                                        <h2 class="text-xl font-black text-stone-900">Aguardando Pagamento</h2>
+                                        <p class="text-stone-500 text-sm">Processe o cartão no app <strong>InfinitePay</strong> e confirme.</p>
+                                        <div class="bg-blue-50 rounded-2xl px-6 py-3 w-full">
+                                            <p class="text-xs text-blue-500 font-semibold uppercase tracking-wider mb-1">{ipWaiting.method}</p>
+                                            <p class="text-3xl font-black text-blue-700">R$ {ipWaiting.total.toFixed(2).replace('.', ',')}</p>
+                                        </div>
+                                        <div class="flex items-center gap-2 text-xs text-stone-400">
+                                            <div class="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                                            Confirmação automática em andamento...
+                                        </div>
+                                        <div class="flex flex-col gap-3 w-full pt-2">
+                                            {/* Botão Android (Força via Intent) */}
+                                            <a href={ipWaiting.checkout_url ? ipWaiting.checkout_url.replace(/^https:\/\//, 'intent://') + '#Intent;scheme=https;package=io.cloudwalk.infinitepaydash;end' : '#'} class="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-lg hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center gap-2 active:scale-95 hidden md:flex android-only">
+                                                <LucideIcon name="smartphone" className="w-6 h-6" /> Abrir no Android (Tap)
+                                            </a>
+                                            {/* Botão iOS / Padrão (Universal Link) */}
+                                            <a href={ipWaiting.checkout_url} target="_blank" rel="noopener noreferrer" class="w-full py-4 bg-blue-600 md:bg-stone-800 text-white rounded-2xl font-black text-lg hover:bg-stone-900 transition-all shadow-lg flex items-center justify-center gap-2 active:scale-95">
+                                                <LucideIcon name="apple" className="w-6 h-6" /> Abrir no iPhone/iPad
+                                            </a>
+                                            <button onClick={cancelInfinitePay} class="w-full py-3 bg-stone-100 text-stone-600 rounded-2xl font-bold text-sm hover:bg-stone-200 transition-all active:scale-95 mt-2">
+                                                Cancelar ou Confirmar Manual
+                                            </button>
+                                            <style dangerouslySetInnerHTML={{
+                                                __html: `
+                                                @supports (-webkit-touch-callout: none) {
+                                                    .android-only { display: none !important; }
+                                                }
+                                            `}} />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isPixModalOpen && (
+                                <div class="fixed inset-0 bg-moriah-brown/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 md:p-8 text-stone-900">
+                                    <div class="bg-white w-[90%] md:w-full max-w-xs md:max-w-sm rounded-[24px] md:rounded-[40px] shadow-2xl overflow-y-auto max-h-[90vh] p-4 md:p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                                        <div class="p-2 md:p-3 bg-teal-50 rounded-xl md:rounded-2xl mb-2 md:mb-3"><LucideIcon name="qr-code" className="w-5 h-5 md:w-6 md:h-6 text-teal-600" /></div>
+                                        <h3 class="text-lg md:text-2xl font-black mb-1 md:mb-2 text-stone-900">Pagamento via PIX</h3>
+                                        <p class="text-stone-500 text-[10px] md:text-xs mb-3 md:mb-4 px-2">Peça ao cliente para escanear o código abaixo ou use o Copia e Cola.</p>
+                                        <div class="bg-white p-2 md:p-3 rounded-xl md:rounded-3xl border-2 md:border-4 border-stone-50 mb-3 md:mb-4 shadow-inner flex-shrink-0">
+                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(currentPixData.payload)}`} class="w-28 h-28 md:w-40 md:h-40 object-contain" alt="PIX QR Code" />
+                                        </div>
+                                        <div class="w-full space-y-2 md:space-y-3">
+                                            <div class="p-2 md:p-3 bg-stone-50 rounded-xl border border-stone-100 text-left">
+                                                <p class="text-[9px] md:text-[10px] uppercase font-bold text-stone-400 mb-0.5 md:mb-1">Copia e Cola</p>
+                                                <div class="flex items-center gap-2">
+                                                    <code class="text-[9px] md:text-xs text-stone-600 truncate flex-1">{currentPixData.payload}</code>
+                                                    <button onClick={() => { navigator.clipboard.writeText(currentPixData.payload); alert('Código copiado!'); }} class="p-1.5 md:p-2 hover:bg-stone-200 rounded-lg transition-colors"><LucideIcon name="copy" className="w-3 h-3 md:w-4 md:h-4 text-moriah-brown" /></button>
+                                                </div>
+                                            </div>
+                                            <div class="text-lg md:text-2xl font-black text-teal-600 mb-1 md:mb-2">R$ {currentPixData.total.toFixed(2)}</div>
+                                            <button onClick={() => finalizeSale('PIX')} class="w-full py-2.5 md:py-4 bg-moriah-brown text-white rounded-xl md:rounded-2xl font-black text-sm md:text-lg hover:bg-moriah-dark transition-all shadow-lg active:scale-95">Confirmar Pagamento</button>
+                                            <button onClick={() => setIsPixModalOpen(false)} class="w-full py-1.5 md:py-2 text-stone-400 font-bold hover:text-stone-600 text-[10px] md:text-base">Voltar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isAsaasModalOpen && currentAsaasCharge && (
+                                <div class="fixed inset-0 bg-moriah-brown/90 backdrop-blur-md z-[70] flex items-center justify-center p-4 md:p-8 text-stone-900">
+                                    <div class="bg-white w-[90%] md:w-full max-w-xs md:max-w-sm rounded-[24px] md:rounded-[40px] shadow-2xl overflow-y-auto max-h-[90vh] p-4 md:p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                                        <div class="p-2 md:p-3 bg-moriah-green/10 rounded-xl md:rounded-2xl mb-2 md:mb-3"><LucideIcon name="credit-card" className="w-5 h-5 md:w-6 md:h-6 text-moriah-green" /></div>
+                                        <h3 class="text-lg md:text-2xl font-black mb-1 md:mb-2 text-stone-900">{currentAsaasCharge.label} via QR</h3>
+                                        <p class="text-stone-500 text-[10px] md:text-xs mb-3 md:mb-4 px-2">Peça ao cliente para escanear o QR Code e pagar no celular.</p>
+                                        <div class="bg-white p-2 md:p-3 rounded-xl md:rounded-3xl border-2 md:border-4 border-stone-50 mb-3 md:mb-4 shadow-inner flex-shrink-0">
+                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(currentAsaasCharge.invoiceUrl)}`} class="w-28 h-28 md:w-40 md:h-40 object-contain" alt="QR Code Asaas" />
+                                        </div>
+                                        <div class="text-lg md:text-2xl font-black text-moriah-green mb-3 md:mb-4">R$ {currentAsaasCharge.total.toFixed(2)}</div>
+                                        <div class={`w-full py-2 rounded-lg text-xs font-bold mb-3 ${asaasPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                            {asaasPaid ? '✓ Pagamento confirmado!' : '⏳ Aguardando pagamento...'}
+                                        </div>
+                                        <div class="w-full space-y-2 md:space-y-3">
+                                            <a href={currentAsaasCharge.invoiceUrl} target="_blank" class="w-full py-2 border border-moriah-green text-moriah-green rounded-xl font-bold text-xs md:text-sm hover:bg-moriah-green/5 transition-all flex justify-center items-center gap-2">
+                                                <LucideIcon name="external-link" className="w-3 h-3" /> Abrir link de pagamento
+                                            </a>
+                                            <button onClick={() => confirmAsaasPayment(currentAsaasCharge.label)} class="w-full py-2.5 md:py-4 bg-moriah-brown text-white rounded-xl md:rounded-2xl font-black text-sm md:text-lg hover:bg-moriah-dark transition-all shadow-lg active:scale-95">Confirmar Pagamento Manualmente</button>
+                                            <button onClick={() => { if (asaasPolling) clearInterval(asaasPolling); setAsaasPolling(null); setIsAsaasModalOpen(false); setCurrentAsaasCharge(null); setAsaasPaid(false); }} class="w-full py-1.5 md:py-2 text-stone-400 font-bold hover:text-stone-600 text-[10px] md:text-base">Cancelar</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isSuccessModalOpen && (
+                                <div class="fixed inset-0 bg-stone-900/80 backdrop-blur-md z-[80] flex items-center justify-center p-4 text-stone-900">
+                                    <div class="bg-white w-full max-w-sm rounded-[40px] shadow-2xl overflow-hidden p-8 flex flex-col items-center text-center animate-in zoom-in-95 duration-300">
+                                        <div class="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mb-6 text-emerald-600"><LucideIcon name="check-circle" className="w-10 h-10" /></div>
+                                        <h3 class="text-2xl font-black mb-2 text-stone-900">Venda Finalizada!</h3>
+                                        <p class="text-stone-500 text-sm mb-8">Deseja enviar a mensagem de agradecimento para o WhatsApp do cliente?</p>
+                                        <div class="w-full space-y-4">
+                                            <div class="text-left">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block text-left">WhatsApp do Cliente</label>
+                                                <div class="relative">
+                                                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 font-bold">+55</span>
+                                                    <input type="tel" placeholder="(00) 00000-0000" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} class="w-full pl-12 pr-4 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+                                                </div>
+                                            </div>
+                                            <button onClick={sendWhatsAppReceipt} disabled={!customerPhone} class="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 disabled:opacity-50 flex items-center justify-center gap-3">
+                                                <LucideIcon name="message-circle" className="w-6 h-6" />Enviar Mensagem
+                                            </button>
+                                            <button onClick={() => { setIsSuccessModalOpen(false); setCustomerPhone(''); setView('pos'); }} class="w-full py-2 text-stone-400 font-bold hover:text-stone-600">Agora não</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {/* Modal: escolha Grão ou Moído */}
+                            {grindPickerProduct && (
+                                <div class="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-[70] flex items-end sm:items-center justify-center p-4" onClick={() => setGrindPickerProduct(null)}>
+                                    <div class="bg-white w-full max-w-xs rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                                        <div class="px-6 pt-6 pb-4 border-b border-stone-100">
+                                            <div class="flex justify-between items-start">
+                                                <div>
+                                                    <p class="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">Adicionar ao carrinho</p>
+                                                    <h3 class="text-lg font-black text-stone-900 leading-tight">{grindPickerProduct.name}</h3>
+                                                </div>
+                                                <button onClick={() => setGrindPickerProduct(null)} class="p-2 text-stone-300 hover:text-stone-600 -mr-1 -mt-1"><LucideIcon name="x" className="w-5 h-5" /></button>
+                                            </div>
+                                        </div>
+                                        <div class="p-5 space-y-3">
+                                            <div role="button" onPointerUp={() => { addToCart(grindPickerProduct, 'grao'); setGrindPickerProduct(null); }} class="w-full flex items-center justify-between px-5 py-4 bg-amber-50 border-2 border-amber-200 rounded-2xl active:bg-amber-100 active:border-amber-400 transition-all cursor-pointer select-none">
+                                                <div class="text-left">
+                                                    <p class="font-black text-amber-900 text-base">Em Grão</p>
+                                                    <p class="text-xs text-amber-700">Moagem na hora, frescor máximo</p>
+                                                </div>
+                                                <span class="font-black text-xl text-amber-800">R$ {parseFloat(grindPickerProduct.price).toFixed(2)}</span>
+                                            </div>
+                                            <div role="button" onPointerUp={() => { addToCart(grindPickerProduct, 'moido'); setGrindPickerProduct(null); }} class="w-full flex items-center justify-between px-5 py-4 bg-stone-50 border-2 border-stone-200 rounded-2xl active:bg-stone-100 active:border-stone-400 transition-all cursor-pointer select-none">
+                                                <div class="text-left">
+                                                    <p class="font-black text-stone-800 text-base">Pó/Moído</p>
+                                                    <p class="text-xs text-stone-500">Pronto para uso</p>
+                                                </div>
+                                                <span class="font-black text-xl text-stone-700">R$ {parseFloat(grindPickerProduct.price_moido || 0).toFixed(2)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+
+                    case 'inventory': return (
+                        <div class="space-y-4 animate-in fade-in duration-500">
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-stone-900">
+                                <h2 class="text-xl md:text-2xl font-bold">Inventário</h2>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <label class="cursor-pointer bg-stone-100 text-stone-600 px-3 py-2 rounded-xl hover:bg-stone-200 transition-all font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm border border-stone-200">
+                                        <LucideIcon name="download-cloud" className="w-4 h-4" /> <span class="hidden sm:inline">Nuvemshop</span> CSV
+                                        <input type="file" accept=".csv" className="hidden" onChange={async (e) => {
+                                            const file = e.target.files[0];
+                                            if (!file) return;
+
+                                            const formData = new FormData();
+                                            formData.append('file', file);
+
+                                            // Loading states could be added here
+                                            alert('Importando produtos, aguarde...');
+                                            try {
+                                                const res = await apiFetch('/api/products/import', { method: 'POST', body: formData });
+                                                const data = await res.json();
+
+                                                alert(data.message || data.error || 'Erro desconhecido');
+
+                                                if (res.ok) {
+                                                    // Atualiza a tabela chamando a API de produtos novamente
+                                                    const reload = await apiFetch('/api/products');
+                                                    setProducts(await reload.json());
+                                                }
+                                            } catch (err) {
+                                                console.error(err);
+                                                alert('Falha na comunicação com o servidor.');
+                                            }
+                                        }} />
+                                    </label>
+                                    <button onClick={() => { setView('add_product'); }} class="flex items-center gap-1.5 bg-moriah-teal text-white px-4 py-2 rounded-xl hover:bg-emerald-900 transition-all shadow-md text-sm font-bold">
+                                        <LucideIcon name="plus" className="w-4 h-4" />Novo Produto
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden">
+                                {/* Mobile: cards (sem scroll horizontal) */}
+                                <div class="sm:hidden divide-y divide-stone-100">
+                                    {products.map(p => (
+                                        <div key={p.id} class="flex items-center gap-3 px-4 py-3">
+                                            <div class="flex-1 min-w-0">
+                                                <p class="font-bold text-sm text-stone-900 truncate">{p.name}</p>
+                                                <p class="text-xs text-stone-400">
+                                                    {p.category} ·
+                                                    {(p.category === 'Caféé' || p.stock_grao > 0 || p.stock_moido > 0) ? (
+                                                        <span class="ml-1 space-x-1">
+                                                            <span class="bg-amber-100 text-amber-700 px-1 rounded text-[10px]">G: {p.stock_grao || 0}</span>
+                                                            <span class="bg-stone-100 text-stone-700 px-1 rounded text-[10px]">P: {p.stock_moido || 0}</span>
+                                                        </span>
+                                                    ) : (
+                                                        <span class={`font-black px-1.5 py-0.5 rounded text-[10px] ${p.stock < p.minStock ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}>Estoque: {p.stock}</span>
+                                                    )}
+                                                </p>
+                                                <p class="text-sm font-bold text-moriah-brown">R$ {parseFloat(p.price).toFixed(2)}</p>
+                                            </div>
+                                            <div class="flex gap-1 shrink-0">
+                                                <button onClick={() => { setEditingProduct(p); setView('edit_product'); }} class="p-2.5 rounded-xl bg-stone-50 text-stone-500 active:bg-moriah-brown active:text-white transition-colors"><LucideIcon name="pencil" className="w-4 h-4" /></button>
+                                                <button onClick={() => deleteProduct(p.id)} class="p-2.5 rounded-xl bg-stone-50 text-stone-400 active:bg-red-500 active:text-white transition-colors"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {products.length === 0 && <p class="px-4 py-8 text-center text-stone-300 italic">Nenhum produto cadastrado.</p>}
+                                </div>
+                                {/* Desktop: tabela completa */}
+                                <div class="hidden sm:block overflow-x-auto">
+                                    <table class="w-full text-left">
+                                        <thead class="bg-stone-50 border-b border-stone-100 text-stone-500 text-xs font-medium uppercase tracking-wider">
+                                            <tr>
+                                                <th class="px-6 py-4">Produto</th><th class="px-6 py-4 hidden md:table-cell">Categoria</th><th class="px-6 py-4">Estoque</th>
+                                                <th class="px-6 py-4 hidden md:table-cell">Custo</th><th class="px-6 py-4">Venda</th><th class="px-6 py-4 hidden lg:table-cell">Ganhos</th>
+                                                <th class="px-6 py-4 text-right">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-stone-50 text-stone-900">
+                                            {products.map(p => (
+                                                <tr key={p.id} class="hover:bg-stone-50 transition-colors">
+                                                    <td class="px-6 py-4"><p class="font-bold">{p.name}</p><p class="text-xs text-stone-400">{p.sku}</p></td>
+                                                    <td class="px-6 py-4 hidden md:table-cell"><span class="px-2 py-1 bg-stone-100 rounded text-xs text-stone-600">{p.category}</span></td>
+                                                    <td class="px-6 py-4">
+                                                        {(p.category === 'Caféé' || p.stock_grao > 0 || p.stock_moido > 0) ? (
+                                                            <div class="flex flex-col gap-1">
+                                                                <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded w-max">G: {p.stock_grao || 0}</span>
+                                                                <span class="text-[10px] font-bold text-stone-700 bg-stone-50 px-2 py-0.5 rounded w-max">P: {p.stock_moido || 0}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span class={`font-bold ${p.stock < p.minStock ? 'text-red-500' : 'text-stone-700'}`}>{p.stock}</span>
+                                                        )}
+                                                    </td>
+                                                    <td class="px-6 py-4 text-stone-500 hidden md:table-cell">R$ {p.cost.toFixed(2)}</td>
+                                                    <td class="px-6 py-4 font-bold text-moriah-brown whitespace-nowrap">R$ {p.price.toFixed(2)}</td>
+                                                    <td class="px-6 py-4 hidden lg:table-cell whitespace-nowrap"><span class="text-emerald-600 font-medium">R$ {(p.price - p.cost).toFixed(2)}</span><span class="text-[10px] text-emerald-500 ml-1">{p.cost > 0 ? `(${(((p.price - p.cost) / p.cost) * 100).toFixed(0)}%)` : ''}</span></td>
+                                                    <td class="px-6 py-4 text-right">
+                                                        <div class="flex justify-end gap-2">
+                                                            <button onClick={() => { setEditingProduct(p); setView('edit_product'); }} class="p-2 text-stone-400 hover:text-moriah-brown transition-colors hover:bg-stone-100 rounded-lg" title="Editar"><LucideIcon name="pencil" className="w-4 h-4" /></button>
+                                                            <button onClick={() => deleteProduct(p.id)} class="p-2 text-stone-300 hover:text-red-500 transition-colors hover:bg-stone-50 rounded-lg" title="Excluir"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    );
+
+                    case 'sales': {
+                        const filteredSales = sales.filter(s => {
+                            const saleDate = new Date(s.created_at || s.date);
+                            const now = new Date();
+
+                            // Filtro de Data (usa created_at do banco ou date do localStorage)
+                            let dateMatch = true;
+                            if (periodFilter === 'day') dateMatch = saleDate.toDateString() === now.toDateString();
+                            else if (periodFilter === 'week') { const diff = now - saleDate; dateMatch = diff <= 7 * 24 * 60 * 60 * 1000; }
+                            else if (periodFilter === 'month') dateMatch = saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
+
+                            // Filtro de Origem — normaliza com/sem acento em Fisico/Físico
+                            let originMatch = true;
+                            const saleOrigin = s.origin || 'Físico';
+                            const isOnline = saleOrigin === 'Online';
+                            if (originFilter === 'fisico') originMatch = !isOnline;
+                            else if (originFilter === 'online') originMatch = isOnline;
+
+                            return dateMatch && originMatch;
+                        });
+                        return (
+                            <div class="space-y-6 animate-in fade-in duration-500 text-stone-900">
+                                {isLoadingSales && <div class="flex items-center justify-center gap-3 py-4 text-stone-500"><div class="w-5 h-5 border-2 border-moriah-brown border-t-transparent rounded-full animate-spin"></div>Carregando vendas...</div>}
+                                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
+                                    <h2 class="text-2xl font-bold">Relatório de Vendas</h2>
+                                    <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                                        <div class="flex flex-wrap gap-2">
+                                            <div class="flex bg-stone-100 p-1 rounded-xl overflow-x-auto no-scrollbar">
+                                                <button onClick={() => setPeriodFilter('day')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'day' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Hoje</button>
+                                                <button onClick={() => setPeriodFilter('week')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'week' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Semana</button>
+                                                <button onClick={() => setPeriodFilter('month')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'month' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Mês</button>
+                                                <button onClick={() => setPeriodFilter('always')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${periodFilter === 'always' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Tudo</button>
+                                            </div>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <div class="flex bg-stone-100 p-1 rounded-xl overflow-x-auto no-scrollbar">
+                                                <button onClick={() => setOriginFilter('all')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${originFilter === 'all' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}>Todas Origens</button>
+                                                <button onClick={() => setOriginFilter('fisico')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1 ${originFilter === 'fisico' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}><LucideIcon name="store" className="w-3 h-3" />Físico</button>
+                                                <button onClick={() => setOriginFilter('online')} class={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1 ${originFilter === 'online' ? 'bg-white shadow-sm text-moriah-brown' : 'text-stone-400'}`}><LucideIcon name="globe" className="w-3 h-3" />Online</button>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => window.print()} class="flex items-center justify-center gap-2 bg-moriah-brown text-white px-6 py-2 rounded-xl hover:bg-moriah-dark transition-all shadow-lg hidden md:flex"><LucideIcon name="printer" className="w-4 h-4" />Imprimir</button>
+                                        <button onClick={fetchSales} disabled={isLoadingSales} class="flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-700 transition-all shadow-sm text-sm font-bold disabled:opacity-50"><LucideIcon name="refresh-cw" className="w-4 h-4" />Atualizar</button>
+                                    </div>
+                                </div>
+                                <div class="print-only hidden py-8 border-b-2 border-stone-200 mb-8">
+                                    <h1 class="text-3xl font-black text-stone-900">Moriah Caféé - Relatório de Vendas</h1>
+                                    <p class="text-stone-500">Gerado em: {new Date().toLocaleString()}</p>
+                                    <p class="text-stone-500 font-bold uppercase tracking-widestá mt-2">Filtro: {periodFilter === 'always' ? 'Todos os Registros' : periodFilter === 'day' ? 'Vendas de Hoje' : periodFilter === 'week' ? 'Últimos 7 dias' : 'Vendas do Mês'}</p>
+                                </div>
+                                <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden text-sm">
+                                    {/* Mobile: cards de venda (sem scroll horizontal) */}
+                                    <div class="sm:hidden divide-y divide-stone-100">
+                                        {filteredSales.map(s => {
+                                            const statusColor = (s.tracking_code || s.status === 'Enviado' || s.status === 'Etiqueta Gerada') ? 'bg-indigo-100 text-indigo-700' : (s.status === 'Pago' || s.status === 'Concluído') ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700';
+                                            return (
+                                                <div key={s.id} class="px-4 py-3 space-y-1">
+                                                    <div class="flex items-start justify-between gap-2">
+                                                        <div class="min-w-0">
+                                                            <p class="font-bold text-stone-900 text-sm truncate">{s.customer_name || s.seller || 'PDV'}</p>
+                                                            <p class="text-xs text-stone-400">{new Date(s.created_at || s.date).toLocaleString('pt-BR')}</p>
+                                                        </div>
+                                                        <p class="font-black text-moriah-brown text-base shrink-0">R$ {parseFloat(s.total).toFixed(2)}</p>
+                                                    </div>
+                                                    <div class="flex items-center gap-2 flex-wrap">
+                                                        <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full ${s.origin === 'Online' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>{s.origin === 'Online' ? 'Online' : 'Físico'}</span>
+                                                        <span class={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColor}`}>{s.tracking_code ? 'Enviado' : (s.status || 'Concluído')}</span>
+                                                        {!s.tracking_code && s.origin === 'Online' && s.shipping_service && s.customer_cep && s.shipping_service !== 'RETIRADA' && !['Expressa Moriah ☕', 'Entrega Padrão Feira'].includes(s.shipping_service) && (
+                                                            <button onClick={() => generateLabel(s.id)} class="text-[10px] bg-moriah-brown px-3 py-1 rounded-lg text-white font-bold">Gerar Etiqueta</button>
+                                                        )}
+                                                        {s.tracking_code && <span class="text-[10px] font-mono text-indigo-600 truncate max-w-[120px]">{s.tracking_code}</span>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {filteredSales.length === 0 && <p class="px-4 py-8 text-center text-stone-400">Nenhuma venda neste período.</p>}
+                                        {filteredSales.length > 0 && (
+                                            <div class="px-4 py-3 bg-stone-50 flex justify-between items-center font-black">
+                                                <span class="text-stone-500 text-xs uppercase tracking-wider">Total acumulado</span>
+                                                <span class="text-moriah-brown">R$ {filteredSales.reduce((acc, curr) => acc + parseFloat(curr.total), 0).toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Desktop: tabela completa */}
+                                    <div class="hidden sm:block overflow-x-auto">
+                                        <table class="w-full text-left">
+                                            <thead class="bg-stone-50 border-b border-stone-100 text-stone-500 text-xs font-medium uppercase tracking-wider">
+                                                <tr><th class="px-6 py-3">Data</th><th class="px-6 py-3">Origem</th><th class="px-6 py-3">Status</th><th class="px-6 py-3 hidden md:table-cell">Itens</th><th class="px-6 py-3 text-right">Total</th><th class="px-6 py-3 text-center">Ações</th></tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-stone-50 text-sm">
+                                                {filteredSales.map(s => (
+                                                    <tr key={s.id} class="hover:bg-stone-50 transition-colors">
+                                                        <td class="px-6 py-4">
+                                                            <p class="font-bold">{s.customer_name || s.seller || 'PDV'}</p><p class="text-xs text-stone-400">{new Date(s.created_at || s.date).toLocaleString('pt-BR')}</p>
+                                                        </td>
+                                                        <td class="px-6 py-4">
+                                                            <span class={`flex items-center gap-1 w-max px-2 py-1 rounded-md text-[10px] font-bold uppercase ${s.origin === 'Online' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>
+                                                                <LucideIcon name={s.origin === 'Online' ? 'globe' : 'store'} className="w-3 h-3" /> {s.origin === 'Online' ? 'Online' : 'Físico'}
+                                                            </span>
+                                                        </td>
+                                                        <td class="px-6 py-4">
+                                                            <span class={`px-2 py-1 rounded text-[10px] font-bold uppercase ${(s.tracking_code || s.status === 'Enviado' || s.status === 'Etiqueta Gerada') ? 'bg-indigo-100 text-indigo-700' : (s.status === 'Pago' || s.status === 'Concluído') ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{s.tracking_code ? 'Enviado' : (s.status || 'Concluído')}</span>
+                                                        </td>
+                                                        <td class="px-6 py-4 hidden md:table-cell text-xs text-stone-600 max-w-[200px] truncate">{(s.items || []).map(i => `${i.quantity}x ${(i.product_name || i.name)}`).join(', ') || '-'}</td>
+                                                        <td class="px-6 py-4 text-right font-bold text-base whitespace-nowrap">R$ {parseFloat(s.total).toFixed(2)}</td>
+                                                        <td class="px-6 py-4 text-center">
+                                                            {s.tracking_code ? (
+                                                                <span class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">{s.tracking_code}</span>
+                                                            ) : s.origin === 'Online' && s.shipping_service === 'RETIRADA' ? (
+                                                                <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded">Retirada</span>
+                                                            ) : s.origin === 'Online' && ['Expressa Moriah ☕', 'Entrega Padrão Feira'].includes(s.shipping_service) ? (
+                                                                <span class="text-[10px] font-bold text-orange-700 bg-orange-50 px-2 py-1 rounded">Entrega Local</span>
+                                                            ) : s.origin === 'Online' && s.shipping_service && s.customer_cep ? (
+                                                                <button onClick={() => generateLabel(s.id)} class="text-xs bg-moriah-brown hover:bg-moriah-dark px-3 py-1.5 rounded-lg text-white font-bold transition-all shadow-sm whitespace-nowrap">Gerar Etiqueta</button>
+                                                            ) : (
+                                                                <span class="text-xs text-stone-300">-</span>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {filteredSales.length === 0 && (<tr><td colSpan="6" class="px-6 py-12 text-center text-stone-400">Nenhuma venda registrada neste período.</td></tr>)}
+                                            </tbody>
+                                            {filteredSales.length > 0 && (
+                                                <tfoot class="bg-stone-50 border-t border-stone-100">
+                                                    <tr class="font-black text-base"><td colSpan="4" class="px-6 py-4 text-right">TOTAL ACUMULADO</td><td class="px-6 py-4 text-right text-moriah-brown">R$ {filteredSales.reduce((acc, curr) => acc + parseFloat(curr.total), 0).toFixed(2)}</td><td></td></tr>
+                                                </tfoot>
+                                            )}
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                    case 'add_product':
+                    case 'edit_product':
+                        return <ProductForm
+                            isEdit={view === 'edit_product'}
+                            editingProduct={editingProduct}
+                            setProducts={setProducts}
+                            setEditingProduct={setEditingProduct}
+                            setView={setView}
+                        />;
+
+                    case 'login': {
+                        const handleLogin = async (e) => {
+                            e.preventDefault();
+                            setLoginError('');
+                            setLoginLoading(true);
+                            const fd = new FormData(e.target);
+                            try {
+                                const res = await apiFetch('/api/auth/login', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ username: fd.get('username'), password: fd.get('password') })
+                                });
+                                const data = await res.json();
+                                if (!res.ok) { setLoginError(data.error || 'Erro ao fazer login.'); return; }
+                                localStorage.setItem('moriah_jwt', data.token);
+                                setCurrentUser(data);
+                            } catch {
+                                setLoginError('Sem conexão com o servidor.');
+                            } finally {
+                                setLoginLoading(false);
+                            }
+                        };
+                        return (
+                            <div class="fixed inset-0 bg-stone-50 flex items-center justify-center p-4">
+                                <div class="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden p-10 flex flex-col items-center">
+                                    <img src={logoUrl} class="w-28 h-auto mb-8 object-contain" />
+                                    <h2 class="text-3xl font-black text-stone-900 mb-2">Bem-vindo de volta</h2>
+                                    <p class="text-stone-400 text-sm mb-8 text-center">Acesse o Moriah PDV para gerenciar suas vendas.</p>
+                                    <form class="w-full space-y-4" onSubmit={handleLogin}>
+                                        <div>
+                                            <label class="text-[10px] uppercase font-bold text-stone-400 ml-4 mb-1 block">Usuário</label>
+                                            <input name="username" required autoCapitalize="none" class="w-full px-6 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" placeholder="admin" />
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] uppercase font-bold text-stone-400 ml-4 mb-1 block">Senha</label>
+                                            <input name="password" type="password" required class="w-full px-6 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" placeholder="••••••••" />
+                                        </div>
+                                        {loginError && <p class="text-red-500 text-sm text-center font-medium">{loginError}</p>}
+                                        <button type="submit" disabled={loginLoading} class="w-full py-5 bg-moriah-brown text-white rounded-2xl font-black text-xl hover:bg-moriah-dark transition-all shadow-xl shadow-stone-200 mt-4 disabled:opacity-60 flex items-center justify-center gap-3">
+                                            {loginLoading ? <><div class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Entrando...</> : 'Entrar no Sistema'}
+                                        </button>
+                                    </form>
+                                    <div class="mt-8 text-stone-400 text-sm italic">Acesso restárito. Contate o administrador para novos acessos.</div>
+                                </div>
+                            </div>
+                        );
+                    }
+                    case 'site_settings': {
+                        return (
+                            <div class="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 text-stone-900">
+                                <div class="flex justify-between items-center"><h2 class="text-2xl font-bold">Conteúdo do E-commerce</h2></div>
+
+                                <form onSubmit={async (e) => {
+                                    e.preventDefault();
+
+                                    const formData = new FormData();
+
+                                    // Adicionando varáveis de estáado textuais evitando Undefined/nulos
+                                    Object.keys(siteSettings).forEach(key => formData.append(key, siteSettings[key] || ''));
+
+                                    // Adicionando arquivos caso selecionados
+                                    if (videoFile) formData.append('hero_video_file', videoFile);
+                                    if (imageFile) formData.append('about_image_file', imageFile);
+
+                                    try {
+                                        const res = await apiFetch('/api/site-settings', {
+                                            method: 'PUT',
+                                            body: formData
+                                        });
+                                        if (res.ok) {
+                                            alert('Conteúdo atualizado com sucesso no site!');
+                                            const resData = await res.json();
+                                            setSiteSettings(prev => ({
+                                                ...prev,
+                                                hero_video: resData.hero_video || prev.hero_video,
+                                                about_image: resData.about_image || prev.about_image
+                                            }));
+
+                                            // Limpa states para não enviar form de novo e reseta formulário DOM
+                                            setVideoFile(null);
+                                            setImageFile(null);
+                                            e.target.reset();
+                                        }
+                                        else alert('Erro ao atualizar configurações.');
+                                    } catch (err) {
+                                        alert('Erro de conexão ao salvar.');
+                                    }
+                                }} class="space-y-6">
+
+                                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                        <h3 class="font-bold text-lg mb-4 text-moriah-brown">Apresentação Principal (Hero/Vídeo)</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 flex items-center justify-between mb-1 block">
+                                                    <span>Título</span>
+                                                    <span class="text-moriah-orange font-normal normal-case">Dica: Aperte 'Enter' para pular de linha!</span>
+                                                </label>
+                                                <textarea rows="3" value={siteSettings.hero_title || ''} onChange={e => setSiteSettings({ ...siteSettings, hero_title: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl placeholder-stone-400" placeholder="Ex:&#10;Seu momento MORIAH&#10;tá te esperando."></textarea>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Texto Descritivo</label>
+                                                <textarea rows="2" value={siteSettings.hero_text || ''} onChange={e => setSiteSettings({ ...siteSettings, hero_text: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl"></textarea>
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Alinhamento do Texto</label>
+                                                <select value={siteSettings.hero_text_align || 'text-center'} onChange={e => setSiteSettings({ ...siteSettings, hero_text_align: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl text-sm">
+                                                    <option value="text-left">Esquerda</option>
+                                                    <option value="text-center">Centro</option>
+                                                    <option value="text-right">Direita</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 flex justify-between mb-1 block">
+                                                    <span>Opacidade Escura do Vídeo</span>
+                                                    <span>{siteSettings.hero_video_opacity || '0.6'}</span>
+                                                </label>
+                                                <input type="range" min="0" max="1" step="0.1" value={siteSettings.hero_video_opacity || 0.6} onChange={e => setSiteSettings({ ...siteSettings, hero_video_opacity: e.target.value })} class="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer mt-3" />
+                                                <p class="text-[10px] text-stone-400 mt-2">Dita o quanto o vídeo será escurecido.</p>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">URL do Vídeo de Fundo (MP4)</label>
+                                                <div class="flex flex-col gap-2">
+                                                    <input value={siteSettings.hero_video || ''} onChange={e => setSiteSettings({ ...siteSettings, hero_video: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="Link externo (opcional)" />
+
+                                                    <div class="relative w-full">
+                                                        <input type="file" name="hero_video_file" accept=".mp4,video/*" onChange={(e) => setVideoFile(e.target.files[0])} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                        <div class="w-full px-4 py-3 bg-stone-100 border border-stone-200 border-dashed rounded-xl flex items-center justify-center gap-2 text-stone-500 hover:bg-stone-200 transition">
+                                                            <LucideIcon name="upload" className="w-4 h-4" />
+                                                            <span class="text-sm font-medium">{videoFile ? `Arquivo: ${videoFile.name}` : 'Fazer Upload de Arquivo MP4'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <p class="text-[10px] text-stone-400 mt-1">Ao fazer o upload enviando o botão 'Atualizar', a URL acima será substituída.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                        <h3 class="font-bold text-lg mb-4 text-moriah-brown">Seção: Nossa História</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Título da História</label>
+                                                <input value={siteSettings.about_title || ''} onChange={e => setSiteSettings({ ...siteSettings, about_title: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" />
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Parágrafo 1</label>
+                                                <textarea rows="3" value={siteSettings.about_text_1 || ''} onChange={e => setSiteSettings({ ...siteSettings, about_text_1: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl"></textarea>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Parágrafo 2</label>
+                                                <textarea rows="3" value={siteSettings.about_text_2 || ''} onChange={e => setSiteSettings({ ...siteSettings, about_text_2: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl"></textarea>
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Alinhamento do Foco da Foto</label>
+                                                <select value={siteSettings.about_image_align || 'object-center'} onChange={e => setSiteSettings({ ...siteSettings, about_image_align: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl text-sm">
+                                                    <option value="object-top">Topo da Imagem</option>
+                                                    <option value="object-center">Centro (Padrão)</option>
+                                                    <option value="object-bottom">Fundo da Imagem</option>
+                                                </select>
+                                                <p class="text-[10px] text-stone-400 mt-1">Previne cortes ruins em rostos no celular.</p>
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Link da Imagem Ilustrativa</label>
+                                                <div class="flex flex-col gap-2">
+                                                    <input value={siteSettings.about_image || ''} onChange={e => setSiteSettings({ ...siteSettings, about_image: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="Link externo da foto (opcional)" />
+
+                                                    <div class="relative w-full">
+                                                        <input type="file" name="about_image_file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                        <div class="w-full px-4 py-3 bg-stone-100 border border-stone-200 border-dashed rounded-xl flex items-center justify-center gap-2 text-stone-500 hover:bg-stone-200 transition">
+                                                            <LucideIcon name="upload-cloud" className="w-4 h-4" />
+                                                            <span class="text-sm font-medium">{imageFile ? `Foto Selecionada: ${imageFile.name}` : 'Fazer Upload de Foto JPG/PNG'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {siteSettings.about_image && <img src={(siteSettings.about_image || '').startsWith('/') ? `${siteSettings.about_image}` : siteSettings.about_image} class="mt-2 text-stone-200 h-20 w-auto rounded border" alt="preview da historia" />}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <button type="submit" class="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl transition-all shadow-lg flex justify-center items-center gap-2">
+                                        <LucideIcon name="globe" className="w-5 h-5" /> Atualizar Loja Virtual
+                                    </button>
+
+                                </form>
+                            </div>
+                        );
+                    }
+                    case 'settings': {
+                        const reloadUsers = () => apiFetch('/api/users').then(r => r.json()).then(d => setUsers(Array.isArray(d) ? d : [])).catch(() => { });
+                        return (
+                            <div class="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500 text-stone-900">
+                                <div class="flex justify-between items-center"><h2 class="text-xl md:text-2xl font-bold">Configurações do Sistema</h2></div>
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    {/* Painel esquerdo: criar + trocar senha */}
+                                    <div class="lg:col-span-1 space-y-4">
+                                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                            <h3 class="font-bold mb-4 flex items-center gap-2 text-stone-900"><LucideIcon name="user-plus" className="w-5 h-5 text-moriah-brown" />Novo Usuário</h3>
+                                            <form class="space-y-3" onSubmit={async (e) => {
+                                                e.preventDefault();
+                                                const fd = new FormData(e.target);
+                                                const res = await apiFetch('/api/users', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ name: fd.get('name'), username: fd.get('username'), password: fd.get('password') })
+                                                });
+                                                const data = await res.json();
+                                                if (!res.ok) { alert(data.error); return; }
+                                                e.target.reset();
+                                                alert('Usuário criado com sucesso!');
+                                                reloadUsers();
+                                            }}>
+                                                <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Nome</label><input name="name" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                                <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Usuário</label><input name="username" required autoCapitalize="none" class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                                <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Senha</label><input name="password" type="password" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                                <button type="submit" class="w-full py-3 bg-moriah-brown text-white rounded-xl font-bold hover:bg-moriah-dark transition-all flex items-center justify-center gap-2 shadow-md"><LucideIcon name="save" className="w-4 h-4" />Criar Usuário</button>
+                                            </form>
+                                        </div>
+                                        <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                            <h3 class="font-bold mb-4 flex items-center gap-2 text-stone-900"><LucideIcon name="lock" className="w-5 h-5 text-moriah-brown" />Minha Senha</h3>
+                                            <form class="space-y-3" onSubmit={async (e) => {
+                                                e.preventDefault();
+                                                const fd = new FormData(e.target);
+                                                const nova = fd.get('nova');
+                                                const conf = fd.get('confirma');
+                                                if (nova !== conf) { alert('As senhas não coincidem.'); return; }
+                                                const res = await apiFetch(`/api/users/${currentUser.id}/password`, {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ password: nova })
+                                                });
+                                                const data = await res.json();
+                                                if (!res.ok) { alert(data.error); return; }
+                                                e.target.reset();
+                                                alert('Senha alterada! Faça login novamente.');
+                                                { localStorage.removeItem('moriah_jwt'); setCurrentUser(null); };
+                                            }}>
+                                                <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Nova Senha</label><input name="nova" type="password" required minLength="4" class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                                <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Confirmar</label><input name="confirma" type="password" required minLength="4" class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                                <button type="submit" class="w-full py-3 bg-stone-800 text-white rounded-xl font-bold hover:bg-stone-900 transition-all flex items-center justify-center gap-2"><LucideIcon name="key" className="w-4 h-4" />Alterar Senha</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                    {/* Lista de usuários */}
+                                    <div class="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden h-fit">
+                                        <div class="px-6 py-4 border-b border-stone-50 flex items-center justify-between">
+                                            <h3 class="font-bold">Usuários Cadastrados</h3>
+                                            <span class="text-xs text-stone-400">{users.length} usuário{users.length !== 1 ? 's' : ''}</span>
+                                        </div>
+                                        <table class="w-full text-left">
+                                            <tbody class="divide-y divide-stone-50">
+                                                {users.map(u => (
+                                                    <tr key={u.id} class="hover:bg-stone-50 transition-colors">
+                                                        <td class="px-6 py-4">
+                                                            <p class="font-bold text-stone-900">{u.name}</p>
+                                                            <p class="text-xs text-stone-400">@{u.username} · <span class={`font-semibold ${u.role === 'admin' ? 'text-moriah-brown' : 'text-stone-400'}`}>{u.role === 'admin' ? 'Admin' : 'Operador'}</span></p>
+                                                        </td>
+                                                        <td class="px-6 py-4 text-right">
+                                                            {u.id === currentUser.id
+                                                                ? <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">VOCÊ</span>
+                                                                : <button onClick={async () => {
+                                                                    if (!confirm(`Remover acesso de "${u.name}"?`)) return;
+                                                                    await apiFetch(`/api/users/${u.id}`, { method: 'DELETE' });
+                                                                    reloadUsers();
+                                                                }} class="p-2 text-stone-300 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50"><LucideIcon name="user-minus" className="w-4 h-4" /></button>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {users.length === 0 && <tr><td colSpan="2" class="px-6 py-8 text-center text-stone-300 italic">Carregando usuários...</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                    case 'customers': {
+                        return (
+                            <div class="space-y-6 animate-in fade-in duration-500 text-stone-900">
+                                <div class="flex justify-between items-center text-stone-900"><h2 class="text-2xl font-bold">Base de Clientes</h2></div>
+                                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    <div class="lg:col-span-1 bg-white p-6 rounded-3xl shadow-sm border border-stone-100 h-fit text-stone-900">
+                                        <h3 class="font-bold mb-4 flex items-center gap-2 text-moriah-brown"><LucideIcon name="user-plus" className="w-5 h-5" />Novo Cliente</h3>
+                                        <form class="space-y-4" onSubmit={async (e) => {
+                                            e.preventDefault();
+                                            const fd = new FormData(e.target);
+                                            try {
+                                                const res = await apiFetch('/api/customers', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ name: fd.get('name'), phone: fd.get('whatsapp'), email: fd.get('email') })
+                                                });
+                                                if (res.ok) {
+                                                    alert('Cliente salvo com sucesso!');
+                                                    e.target.reset();
+                                                    fetchCustomers();
+                                                }
+                                            } catch (err) { alert('Erro ao salvar cliente.'); }
+                                        }}>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">Nome Completo</label><input name="name" required class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">WhatsApp</label><input name="whatsapp" required placeholder="5511999999999" class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <div><label class="text-[10px] uppercase font-bold text-stone-400 ml-2 mb-1 block">E-mail</label><input name="email" type="email" class="w-full px-4 py-3 bg-stone-50 border border-stone-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" /></div>
+                                            <button type="submit" class="w-full py-4 bg-moriah-brown text-white rounded-xl font-bold hover:bg-moriah-dark transition-all mt-2 flex items-center justify-center gap-2 shadow-lg"><LucideIcon name="save" className="w-5 h-5" />Salvar Cliente</button>
+                                        </form>
+
+                                        <div class="mt-8 pt-8 border-t border-stone-100">
+                                            <h3 class="font-bold mb-4 flex items-center gap-2 text-emerald-600"><LucideIcon name="megaphone" className="w-5 h-5" />Marketing Direto</h3>
+                                            <p class="text-[10px] text-stone-400 mb-4 uppercase font-bold">Lembrar clientes a cada 15 dias</p>
+                                            <button onClick={triggerMarketing} class="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-md">
+                                                <LucideIcon name="send" className="w-4 h-4" /> Disparar Lembretes
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="lg:col-span-2 space-y-4">
+                                        <div class="bg-white rounded-3xl shadow-sm border border-stone-100 overflow-hidden">
+                                            <div class="px-6 py-4 border-b border-stone-50 bg-stone-50/50 flex justify-between items-center text-stone-900">
+                                                <h3 class="font-bold">Clientes Cadastrados ({customers.length})</h3>
+                                                <div class="relative w-48"><div class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400"><LucideIcon name="search" className="w-3 h-3" /></div><input placeholder="Buscar..." class="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-stone-200 rounded-lg outline-none focus:ring-1 focus:ring-moriah-brown/30" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
+                                            </div>
+                                            <table class="w-full text-left">
+                                                <thead class="bg-stone-50/50 text-[10px] uppercase font-bold text-stone-400 border-b border-stone-100"><tr><th class="px-6 py-3">Cliente</th><th class="px-6 py-3 text-right">Ações</th></tr></thead>
+                                                <tbody class="divide-y divide-stone-50">
+                                                    {(isLoadingCustomers ? [] : customers).filter(c => (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || c.phone.includes(searchTerm)).map(c => (
+                                                        <tr key={c.id} class="hover:bg-stone-50 transition-colors">
+                                                            <td class="px-6 py-4">
+                                                                <p class="font-bold">{c.name}</p>
+                                                                <div class="flex gap-4 mt-1 text-xs text-stone-400">
+                                                                    <span class="flex items-center gap-1"><LucideIcon name="phone" className="w-3 h-3" /> {c.phone}</span>
+                                                                    {c.email && <span class="flex items-center gap-1"><LucideIcon name="mail" className="w-3 h-3" /> {c.email}</span>}
+                                                                </div>
+                                                                {c.last_message_at && <p class="text-[9px] text-emerald-600 font-bold uppercase mt-1">Último disparo: {new Date(c.last_message_at).toLocaleDateString('pt-BR')}</p>}
+                                                            </td>
+                                                            <td class="px-6 py-4 text-right">
+                                                                <div class="flex justify-end gap-2">
+                                                                    <a href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} target="_blank" class="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="Falar no WhatsApp"><LucideIcon name="message-circle" className="w-4 h-4" /></a>
+                                                                    <button onClick={async () => { if (confirm('Excluir este cliente?')) { await apiFetch(`/api/customers/${c.id}`, { method: 'DELETE' }); fetchCustomers(); } }} class="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><LucideIcon name="trash-2" className="w-4 h-4" /></button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                    {(isLoadingCustomers || customers.length === 0) && (<tr><td colspan="2" class="px-6 py-12 text-center text-stone-300 italic">{isLoadingCustomers ? 'Carregando base de clientes...' : 'Sua base de clientes está vazia.'}</td></tr>)}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                }
+            };
+
+            if (!currentUser) {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('tap_result') || params.get('ip_paid')) {
+                    return (
+                        <div class="flex items-center justify-center h-screen bg-stone-50 w-full">
+                            <div class="text-center p-8 bg-white rounded-3xl shadow-xl border border-stone-100">
+                                <div class="w-12 h-12 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                                <h2 class="text-xl font-bold text-stone-800 mb-2">Restaurando Sessão</h2>
+                                <p class="text-stone-500 text-sm">Validando seu pagamento com a InfinitePay...</p>
+                                <p class="text-[10px] text-stone-300 mt-4">Por favor, aguarde alguns segundos.</p>
+                            </div>
+                        </div>
+                    );
+                }
+                return renderView('login');
+            }
+
+            // Primeiro login: força troca de senha
+            if (currentUser.must_change_password) {
+                const handleFirstPassword = async (e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.target);
+                    const nova = fd.get('nova');
+                    const conf = fd.get('confirma');
+                    if (nova !== conf) { alert('As senhas não coincidem.'); return; }
+                    if (nova.length < 4) { alert('A senha deve ter ao menos 4 caracteres.'); return; }
+                    const res = await apiFetch(`/api/users/${currentUser.id}/first-password`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: nova })
+                    });
+                    if (res.ok) {
+                        const updated = { ...currentUser, must_change_password: 0 };
+                        setCurrentUser(updated);
+                    } else {
+                        const d = await res.json();
+                        alert(d.error || 'Erro ao alterar senha.');
+                    }
+                };
+                return (
+                    <div class="fixed inset-0 bg-stone-50 flex items-center justify-center p-4">
+                        <div class="bg-white w-full max-w-md rounded-[40px] shadow-2xl overflow-hidden p-10 flex flex-col items-center">
+                            <img src={logoUrl} class="h-12 w-auto mb-8 object-contain" />
+                            <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4 text-amber-600"><LucideIcon name="lock" className="w-8 h-8" /></div>
+                            <h2 class="text-2xl font-black text-stone-900 mb-1">Bem-vindo, {currentUser.name}!</h2>
+                            <p class="text-stone-400 text-sm mb-8 text-center">Por segurança, defina uma senha pessoal antes de continuar.</p>
+                            <form class="w-full space-y-4" onSubmit={handleFirstPassword}>
+                                <div>
+                                    <label class="text-[10px] uppercase font-bold text-stone-400 ml-4 mb-1 block">Nova Senha</label>
+                                    <input name="nova" type="password" required minLength="4" class="w-full px-6 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" placeholder="Mínimo 4 caracteres" />
+                                </div>
+                                <div>
+                                    <label class="text-[10px] uppercase font-bold text-stone-400 ml-4 mb-1 block">Confirmar Senha</label>
+                                    <input name="confirma" type="password" required minLength="4" class="w-full px-6 py-4 bg-stone-50 border border-stone-100 rounded-2xl font-bold focus:outline-none focus:ring-2 focus:ring-moriah-brown/50" placeholder="Repita a senha" />
+                                </div>
+                                <button type="submit" class="w-full py-5 bg-moriah-brown text-white rounded-2xl font-black text-xl hover:bg-moriah-dark transition-all shadow-xl shadow-stone-200 mt-4 flex items-center justify-center gap-3">
+                                    <LucideIcon name="check-circle" className="w-6 h-6" />Definir Senha e Entrar
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
+
+            const MobileNavItem = ({ icon, label, active, onClick }) => (
+                <button onClick={onClick} class={`flex flex-col items-center justify-center flex-1 py-2 transition-all ${active ? 'text-white' : 'text-stone-400/80 hover:text-stone-300'}`}>
+                    <LucideIcon name={icon} className={`w-5 h-5 ${active ? 'fill-white/10 text-white' : ''}`} />
+                    <span class={`text-[10px] font-bold mt-1 uppercase tracking-tighter ${active ? 'text-white' : 'text-stone-400'}`}>{label}</span>
+                </button>
+            );
+
+            return (
+                <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-stone-50 w-full">
+                    <aside class="hidden md:flex w-72 bg-white border-r border-stone-100 flex-col p-6 space-y-8 no-print">
+                        <div class="flex items-center justify-between py-2 mb-2">
+                            <img src={logoUrl} class="h-8 w-auto max-w-[150px] object-contain" />
+                            <div class="relative">
+                                <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} class="p-2 text-stone-400 hover:text-stone-600 relative">
+                                    <LucideIcon name="bell" className="w-5 h-5" />
+                                    {notifications.filter(n => !n.read).length > 0 && (
+                                        <span class="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
+                                            {notifications.filter(n => !n.read).length}
+                                        </span>
+                                    )}
+                                </button>
+                                {isNotificationsOpen && (
+                                    <div class="absolute left-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-stone-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-4 border-b border-stone-50 flex justify-between items-center bg-stone-50/50">
+                                            <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
+                                            <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas</button>
+                                        </div>
+                                        <div class="max-h-80 overflow-y-auto divide-y divide-stone-50">
+                                            {notifications.length > 0 ? notifications.map(n => (
+                                                <div key={n.id} class={`p-4 hover:bg-stone-50 transition-colors ${!n.read ? 'bg-moriah-brown/5' : ''}`}>
+                                                    <div class="flex gap-3">
+                                                        <div class={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : n.type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                                                        <div>
+                                                            <p class="text-xs font-bold text-stone-900">{n.title}</p>
+                                                            <p class="text-[11px] text-stone-500 leading-tight mt-0.5">{n.message}</p>
+                                                            <p class="text-[9px] text-stone-400 mt-1">{new Date(n.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )) : (
+                                                <div class="p-8 text-center text-stone-400">
+                                                    <LucideIcon name="bell-off" className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                                    <p class="text-xs">Silêncio por aqui...</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {notifications.length > 0 && (
+                                            <button onClick={() => setNotifications([])} class="w-full py-3 text-center text-xs font-bold text-stone-400 hover:text-red-500 transition-colors bg-stone-50/50 border-t border-stone-50">Limpar histórico</button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <nav class="flex-1 space-y-2">
+                            <SidebarItem onClick={() => setView('dashboard')} active={view === 'dashboard'} icon="layout-dashboard" label="Dashboard" />
+                            <SidebarItem onClick={() => setView('pos')} active={view === 'pos'} icon="shopping-bag" label="Ponto de Venda" />
+                            <SidebarItem onClick={() => setView('inventory')} active={view === 'inventory'} icon="package" label="Inventário" />
+                            <SidebarItem onClick={() => setView('customers')} active={view === 'customers'} icon="users-round" label="Clientes" />
+                            <SidebarItem onClick={() => setView('sales')} active={view === 'sales'} icon="file-text" label="Relatórios" />
+                            <SidebarItem onClick={() => setView('site_settings')} active={view === 'site_settings'} icon="store" label="Ecommerce CMS" />
+                            <SidebarItem onClick={() => setView('settings')} active={view === 'settings'} icon="settings" label="Sistema" />
+                        </nav>
+                        <div class="space-y-4">
+                            <div class="p-4 bg-stone-50 rounded-2xl border border-stone-100">
+                                <p class="text-[10px] font-bold text-stone-400 mb-1 uppercase">Logado como</p>
+                                <p class="text-sm font-black text-stone-900 truncate">{currentUser.name || currentUser.username}</p>
+                                <button onClick={() => { localStorage.removeItem('moriah_jwt'); setCurrentUser(null); }} class="text-[10px] text-moriah-brown font-bold mt-2 hover:underline">Sair do Sistema</button>
+                            </div>
+                        </div>
+                    </aside>
+                    <header class="md:hidden sticky top-0 z-40 bg-white border-b border-stone-100 px-4 py-3 flex items-center justify-between no-print w-full">
+                        <img src={logoUrl} class="h-7 w-auto max-w-[120px] object-contain" />
+                        <div class="flex items-center gap-3">
+                            <div class="relative">
+                                <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} class="p-2 bg-stone-50 rounded-lg text-stone-600 relative">
+                                    <LucideIcon name="bell" className="w-5 h-5" />
+                                    {notifications.filter(n => !n.read).length > 0 && (
+                                        <span class="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">
+                                            {notifications.filter(n => !n.read).length}
+                                        </span>
+                                    )}
+                                </button>
+                                {isNotificationsOpen && (
+                                    <div class="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-stone-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-4 border-b border-stone-50 flex justify-between items-center bg-stone-50/50">
+                                            <h4 class="font-bold text-sm text-stone-900">Notificações</h4>
+                                            <button onClick={() => { setNotifications(notifications.map(n => ({ ...n, read: true }))); }} class="text-[10px] font-bold text-moriah-brown hover:underline">Marcar todas como lidas</button>
+                                        </div>
+                                        <div class="max-h-80 overflow-y-auto divide-y divide-stone-50">
+                                            {notifications.length > 0 ? notifications.map(n => (
+                                                <div key={n.id} class={`p-4 hover:bg-stone-50 transition-colors ${!n.read ? 'bg-moriah-brown/5' : ''}`}>
+                                                    <div class="flex gap-3">
+                                                        <div class={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${n.type === 'success' ? 'bg-emerald-500' : n.type === 'warning' ? 'bg-amber-500' : n.type === 'error' ? 'bg-red-500' : 'bg-blue-500'}`}></div>
+                                                        <div>
+                                                            <p class="text-xs font-bold text-stone-900">{n.title}</p>
+                                                            <p class="text-[11px] text-stone-500 leading-tight mt-0.5">{n.message}</p>
+                                                            <p class="text-[9px] text-stone-400 mt-1">{new Date(n.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )) : (
+                                                <div class="p-8 text-center text-stone-400">
+                                                    <LucideIcon name="bell-off" className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                                    <p class="text-xs">Nenhuma notificação</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {notifications.length > 0 && (
+                                            <button onClick={() => setNotifications([])} class="w-full py-3 text-center text-xs font-bold text-stone-400 hover:text-red-500 transition-colors bg-stone-50/50 border-t border-stone-50">Limpar histórico</button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            <div class="text-right"><p class="text-[8px] font-bold text-stone-400 uppercase leading-none">Vendedor</p><p class="text-xs font-black text-stone-900 leading-none mt-0.5">{currentUser.username}</p></div>
+                            <button onClick={() => { localStorage.removeItem('moriah_jwt'); setCurrentUser(null); }} class="p-2 bg-stone-50 rounded-lg text-moriah-brown p-2"><LucideIcon name="log-out" className="w-4 h-4" /></button>
+                        </div>
+                    </header>
+                    <main class="flex-1 p-4 md:p-8 overflow-y-auto pb-32 md:pb-8">{renderView()}</main>
+                    <nav class="md:hidden fixed bottom-0 left-0 right-0 w-full h-[72px] bg-moriah-black border-t border-white/5 flex items-center px-0 no-print z-60 shadow-[0_-8px_30px_rgb(0,0,0,0.4)] pb-safe">
+                        <MobileNavItem onClick={() => setView('dashboard')} active={view === 'dashboard'} icon="layout-dashboard" label="Painel" />
+                        <MobileNavItem onClick={() => setView('pos')} active={view === 'pos'} icon="shopping-bag" label="Venda" />
+                        <MobileNavItem onClick={() => setView('inventory')} active={view === 'inventory'} icon="package" label="Estoque" />
+                        <MobileNavItem onClick={() => setView('customers')} active={view === 'customers'} icon="users-round" label="Clientes" />
+                        <MobileNavItem onClick={() => setView('sales')} active={view === 'sales' || view === 'settings'} icon="more-horizontal" label="Mais" />
+                    </nav>
+                </div>
+            );
+        };
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
