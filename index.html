@@ -2579,8 +2579,8 @@ Qualquer dúvida, estamos à disposição!`;
             return (
                 <div class="flex flex-col md:flex-row h-screen overflow-hidden bg-stone-50 w-full">
                     <aside class="hidden md:flex w-72 bg-white border-r border-stone-100 flex-col p-6 space-y-8 no-print">
-                        <div class="flex items-center justify-between py-2 mb-2">
-                            <img src={logoUrl} class="h-8 w-auto max-w-[150px] object-contain" />
+                        <div class="flex items-center justify-between py-2 mb-2 px-4">
+                            <img src={logoUrl} class="h-12 w-auto max-w-[160px] object-contain" />
                             <div class="relative">
                                 <button onClick={(e) => { e.stopPropagation(); setIsNotificationsOpen(!isNotificationsOpen); }} class={`p-2 rounded-xl transition-all ${isNotificationsOpen ? 'bg-moriah-brown text-white shadow-lg' : 'bg-stone-50 text-stone-400 hover:text-moriah-brown'}`}>
                                     <div class="relative">
