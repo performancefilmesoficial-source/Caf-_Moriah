@@ -1427,7 +1427,7 @@ Qualquer dúvida, estamos à disposição!`;
                     }
 
                     case 'pos': return (
-                        <div class="flex flex-col lg:flex-row gap-6 h-[calc(100dvh-180px)] md:h-[calc(100dvh-96px)] animate-in fade-in duration-500 relative">
+                        <div class="flex flex-col lg:flex-row gap-6 h-[calc(100dvh-180px)] md:h-[calc(100dvh-96px)] animate-in fade-in duration-500">
                             {cart.length > 0 && (
                                 <button onClick={() => setIsMobileCartOpen(true)} class="lg:hidden fixed bottom-24 right-6 z-40 bg-moriah-brown text-white p-4 rounded-full shadow-2xl flex items-center gap-2 animate-bounce">
                                     <LucideIcon name="shopping-cart" className="w-6 h-6" />
@@ -1458,7 +1458,7 @@ Qualquer dúvida, estamos à disposição!`;
                                             <div key={p.id}
                                                 role="button"
                                                 onClick={(e) => { e.stopPropagation(); handleTap(); }}
-                                                class={`flex flex-col bg-white rounded-[32px] shadow-sm border border-stone-100 active:ring-2 active:ring-moriah-brown/30 active:bg-stone-50 transition-all select-none overflow-hidden ${!hasStock ? 'opacity-40 pointer-events-none' : 'cursor-pointer hover:border-moriah-brown/30'}`}
+                                                class={`relative flex flex-col bg-white rounded-[32px] shadow-sm border border-stone-100 active:ring-2 active:ring-moriah-brown/30 active:bg-stone-50 transition-all select-none overflow-hidden ${!hasStock ? 'opacity-40 pointer-events-none' : 'cursor-pointer hover:border-moriah-brown/30'}`}
                                             >
                                                 {/* Header do Card: Nome e Peso */}
                                                 <div class="p-4 pb-2">
@@ -1510,7 +1510,7 @@ Qualquer dúvida, estamos à disposição!`;
                                                 </div>
 
                                                 {/* Overlay de Ação (Hover Visual) */}
-                                                <div class="absolute inset-0 bg-moriah-brown/5 opacity-0 active:opacity-100 transition-opacity"></div>
+                                                <div class="absolute inset-0 bg-moriah-brown/5 opacity-0 active:opacity-100 transition-opacity pointer-events-none"></div>
                                             </div>
                                         );
                                     })}
