@@ -277,6 +277,30 @@ router.get('/receipt/:sale_id', async (req, res, next) => {
     } catch (err) { next(err); }
 });
 
+// GET /api/pdv/tap-result — callback do InfinitePay após pagamento tap (sem auth)
+// InfinitePay redireciona para cá ao concluir. Confirma a venda no DB e redireciona
+// para o PDV com ip_paid=X, que o polling/useEffect já sabe tratar.
+router.get('/tap-result', async (req, res) => {
+    console.log('[TAP RESULT] InfinitePay callback params:', JSON.stringify(req.query));
+    const { sale_id, order_id } = req.query;
+    const saleId = sale_id || (order_id ? order_id.replace('moriah-pdv-', '') : null);
+    if (!saleId) return res.redirect('/');
+
+    try {
+        const db = getDb();
+        const [rows] = await db.query('SELECT status FROM sales WHERE id = ?', [saleId]);
+        if (rows.length && rows[0].status === 'Aguardando Pagamento') {
+            await db.run("UPDATE sales SET status = 'Pago' WHERE id = ?", [saleId]);
+            console.log(`[TAP RESULT] Venda #${saleId} → Pago`);
+        }
+    } catch (e) {
+        console.error('[TAP RESULT] Erro DB:', e.message);
+    }
+
+    // Redireciona para o PDV — o useEffect ip_paid já trata isso
+    res.redirect(`/?ip_paid=${saleId}`);
+});
+
 // POST /api/pdv/send-receipt
 const whatsappService = require('../services/whatsappService');
 router.post('/send-receipt', authenticateJWT, async (req, res, next) => {

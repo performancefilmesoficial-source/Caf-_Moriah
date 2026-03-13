@@ -1101,7 +1101,9 @@
                     const infinitePayMethod = cardType; // 'credit' ou 'debit'
                     const installments = finalInstallments;
                     const orderId = `moriah-pdv-${sale_id}`;
-                    const resultUrl = encodeURIComponent(`${window.location.origin}/?tap_result=1&sale_id=${sale_id}`);
+                    // result_url aponta para endpoint backend que confirma a venda no DB
+                    // e redireciona para /?ip_paid=X (tratado pelo useEffect existente)
+                    const resultUrl = encodeURIComponent(`${window.location.origin}/api/pdv/tap-result?sale_id=${sale_id}`);
                     const appClientReferrer = 'MoriahPDV';
                     const afForceDeeplink = 'true';
 
@@ -1122,11 +1124,20 @@
                             if (data.paid) {
                                 clearInterval(ipPollingRef.current);
                                 setIpWaiting(null);
+                                setIsManualConfirmOpen(false);
                                 setCart([]);
                                 setDiscount(0);
+                                localStorage.removeItem('ip_pending');
                                 setLastSale({ id: sale_id, total, method: methodLabel, items: cart });
                                 addNotification('Venda Confirmada', `InfinitePay: R$ ${total.toFixed(2)} recebido.`, 'success');
                                 setIsSuccessModalOpen(true);
+                            } else if (data.status === 'Cancelado') {
+                                // Venda cancelada (pelo X no InfinitePay ou pelo usuário no PDV)
+                                clearInterval(ipPollingRef.current);
+                                setIpWaiting(null);
+                                setIsManualConfirmOpen(false);
+                                localStorage.removeItem('ip_pending');
+                                addNotification('Venda Cancelada', 'Pagamento cancelado. Estoque restaurado.', 'warning');
                             }
                         } catch (_) { }
                     }, 3000);
