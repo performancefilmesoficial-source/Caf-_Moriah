@@ -109,12 +109,8 @@ router.post('/import', authenticateJWT, upload.single('file'), async (req, res, 
     } catch (err) { next(err); }
 });
 
-// POST /api/upload  (imagem → Base64)
-router.post('/upload', upload.single('image'), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
-    const mime = req.file.mimetype || 'image/jpeg';
-    const base64 = req.file.buffer.toString('base64');
-    res.json({ imageUrl: `data:${mime};base64,${base64}` });
-});
+// ─── Rota IA (movida para app.js) ──────────────────────────────
+// ... (Removido daqui para usar a rota global unificada no app.js)
+
 
 module.exports = router;

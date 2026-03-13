@@ -168,17 +168,32 @@
             if (token) {
                 headers['Authorization'] = `Bearer ${token}`;
             }
-            const res = await window.fetch(url, { ...options, headers });
-            if ((res.status === 401 || res.status === 403) && !url.includes('/api/auth/login')) {
-                const hadToken = !!token;
-                localStorage.removeItem('moriah_jwt');
-                localStorage.removeItem('moriah_current_user');
-                if (hadToken) {
-                    alert('Sessão expirada ou acesso negado. Faça login novamente.');
-                    window.location.reload();
+            
+            try {
+                const res = await window.fetch(url, { ...options, headers });
+                if ((res.status === 401 || res.status === 403) && !url.includes('/api/auth/login')) {
+                    console.error(`[AUTH] Erro ${res.status} em: ${url}. Token presente: ${!!token}`);
+                    
+                    // Se estivermos em um processo de retorno de pagamento, evitamos o logout imediato
+                    // para dar chance ao sistema de recuperar a sessão ou processar o retorno.
+                    const isPaymentReturn = window.location.search.includes('ip_paid') || window.location.search.includes('tap_result');
+                    
+                    if (!isPaymentReturn) {
+                        localStorage.removeItem('moriah_jwt');
+                        localStorage.removeItem('moriah_current_user');
+                        if (token) {
+                            alert('Sessão expirada ou acesso negado. Faça login novamente.');
+                            window.location.reload();
+                        }
+                    } else {
+                        console.warn("[AUTH] Erro de autenticação detectado durante retorno de pagamento. Ignorando logout automático.");
+                    }
                 }
+                return res;
+            } catch (err) {
+                console.error(`[API] Falha crítica em ${url}:`, err);
+                throw err;
             }
-            return res;
         };
 
         const fmtR = (val) => {
@@ -565,7 +580,12 @@
 
         const App = () => {
             const [currentUser, setCurrentUser] = useState(() => {
-                try { return JSON.parse(localStorage.getItem('moriah_current_user')); } catch { return null; }
+                try {
+                    const saved = localStorage.getItem('moriah_current_user');
+                    const token = localStorage.getItem('moriah_jwt');
+                    console.log('[AUTH] Inicializando App. User na Storage:', saved ? 'Sim' : 'Não', 'Token na Storage:', token ? 'Sim' : 'Não');
+                    return saved ? JSON.parse(saved) : null;
+                } catch { return null; }
             });
             const [view, setView] = useState('pos');
             const [products, setProducts] = useState([]);
@@ -696,11 +716,13 @@
             const [isManualConfirmOpen, setIsManualConfirmOpen] = useState(false);
             const ipPollingRef = React.useRef(null);
             const [siteSettings, setSiteSettings] = useState({
-                hero_title: '', hero_subtitle: '', hero_text: '', hero_video: '',
-                about_title: '', about_subtitle: '', about_text_1: '', about_text_2: '', about_image: ''
+                hero_title: '', hero_text: '', hero_video: '',
+                hero_banners: '[]',
+                about_title: '', about_text_1: '', about_text_2: '', about_image: ''
             });
             const [videoFile, setVideoFile] = useState(null);
             const [imageFile, setImageFile] = useState(null);
+            const [bannerFiles, setBannerFiles] = useState([]);
             const [notifications, setNotifications] = useState(() => {
                 const saved = localStorage.getItem('moriah_notifications');
                 return saved ? JSON.parse(saved) : [];
@@ -800,18 +822,21 @@
                 const saleId = params.get('sale_id');
                 const targetId = saleId || paidId;
 
-                console.log("[PDV] Verificando retorno InfinitePay:", { targetId, tapResult });
+                if (!targetId) return;
 
-                if (targetId) {
-                    // Mantém os parâmetros na URL até processar, mas limpa para não entrar em loop se o dev recarregar manualmente
-                    // window.history.replaceState({}, '', window.location.pathname); 
+                console.log("[PDV] Processando retorno de pagamento:", { targetId, tapResult });
 
+                // Pequeno delay para garantir que o resto da app carregou (especialmente se houve redirect)
+                const timer = setTimeout(() => {
                     const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
-
+                    
                     apiFetch(`/api/pdv/infinitepay/status/${targetId}`)
-                        .then(r => r.json())
+                        .then(r => {
+                            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                            return r.json();
+                        })
                         .then(data => {
-                            console.log("[PDV] Status do pagamento:", data);
+                            console.log("[PDV] Status final do pagamento:", data);
                             if (data.paid) {
                                 setCart([]);
                                 setDiscount(0);
@@ -819,28 +844,26 @@
                                     setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
                                 }
                                 setIsSuccessModalOpen(true);
-                                // Agora sim limpamos o estado pendente e a URL
                                 localStorage.removeItem('ip_pending');
                                 window.history.replaceState({}, '', window.location.pathname);
                             } else {
-                                // Se for tap_result=1 mas não deu pago, o usuário pode ter cancelado no app
                                 if (tapResult) {
-                                    alert('Pagamento cancelado ou não aprovado na maquininha.');
+                                    alert('Pagamento não confirmado na maquininha.');
                                     if (pending && pending.cart) {
                                         setCart(pending.cart);
                                     }
-                                    // Limpa para permitir nova tentativa
                                     localStorage.removeItem('ip_pending');
                                     window.history.replaceState({}, '', window.location.pathname);
                                 }
                             }
                         })
                         .catch(err => {
-                            console.error("[PDV] Erro ao verificar status:", err);
-                            // Em caso de erro de rede, não limpamos o pending para tentar novamente se recarregar
+                            console.error("[PDV] Erro crítico ao verificar status do pagamento:", err);
                         });
-                }
-            }, [currentUser]); // Adiciona currentUser para garantir que roda quando a sessão estabilizar
+                }, 1000);
+
+                return () => clearTimeout(timer);
+            }, [currentUser]); // currentUser ajuda a disparar quando o login estabiliza
 
             // Busca vendas do banco de dados ao abrir a aba de vendas
             // Auto-refresh a cada 30s para capturar pedidos online automaticamente
@@ -1025,6 +1048,7 @@
                 total = parseFloat((total / (1 - appliedRate)).toFixed(2));
 
                 const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
+                console.log('[IP] Iniciando handleInfinitePay:', cardType, 'Total:', total);
                 if (!await askConfirm('Confirmar Cobrança', `Deseja cobrar R$ ${total.toFixed(2).replace('.', ',')} no ${methodLabel}?`)) {
                     return;
                 }
@@ -2243,11 +2267,23 @@ Qualquer dúvida, estamos à disposição!`;
                                     const formData = new FormData();
 
                                     // Adicionando varáveis de estado textuais evitando Undefined/nulos
-                                    Object.keys(siteSettings).forEach(key => formData.append(key, siteSettings[key] || ''));
+                                    Object.keys(siteSettings).forEach(key => {
+                                        if (key !== 'hero_banners') {
+                                            formData.append(key, siteSettings[key] || '');
+                                        }
+                                    });
+
+                                    // Envia o array atual de banners (JSON)
+                                    formData.append('hero_banners', siteSettings.hero_banners || '[]');
 
                                     // Adicionando arquivos caso selecionados
                                     if (videoFile) formData.append('hero_video_file', videoFile);
                                     if (imageFile) formData.append('about_image_file', imageFile);
+                                    
+                                    // Adiciona novos banners
+                                    if (bannerFiles && bannerFiles.length > 0) {
+                                        bannerFiles.forEach(f => formData.append('hero_banners_files', f));
+                                    }
 
                                     try {
                                         const res = await apiFetch('/api/site-settings', {
@@ -2260,12 +2296,14 @@ Qualquer dúvida, estamos à disposição!`;
                                             setSiteSettings(prev => ({
                                                 ...prev,
                                                 hero_video: resData.hero_video || prev.hero_video,
-                                                about_image: resData.about_image || prev.about_image
+                                                about_image: resData.about_image || prev.about_image,
+                                                hero_banners: JSON.stringify(resData.hero_banners || [])
                                             }));
 
                                             // Limpa states para não enviar form de novo e reseta formulário DOM
                                             setVideoFile(null);
                                             setImageFile(null);
+                                            setBannerFiles([]);
                                             e.target.reset();
                                         }
                                         else alert('Erro ao atualizar configurações.');
@@ -2275,7 +2313,7 @@ Qualquer dúvida, estamos à disposição!`;
                                 }} class="space-y-6">
 
                                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
-                                        <h3 class="font-bold text-lg mb-4 text-moriah-brown">Apresentação Principal (Hero/Vídeo)</h3>
+                                        <h3 class="font-bold text-lg mb-4 text-moriah-brown">Apresentação Principal (Carrossel de Banners)</h3>
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div class="md:col-span-2">
                                                 <label class="text-[10px] uppercase font-bold text-stone-400 flex items-center justify-between mb-1 block">
@@ -2308,26 +2346,58 @@ Qualquer dúvida, estamos à disposição!`;
                                             </div>
                                             <div>
                                                 <label class="text-[10px] uppercase font-bold text-stone-400 flex justify-between mb-1 block">
-                                                    <span>Opacidade Escura do Vídeo</span>
+                                                    <span>Brilho/Opacidade do Efeito (Escurecer)</span>
                                                     <span>{siteSettings.hero_video_opacity || '0.6'}</span>
                                                 </label>
                                                 <input type="range" min="0" max="1" step="0.1" value={siteSettings.hero_video_opacity || 0.6} onChange={e => setSiteSettings({ ...siteSettings, hero_video_opacity: e.target.value })} class="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer mt-3" />
-                                                <p class="text-[10px] text-stone-400 mt-2">Dita o quanto o vídeo será escurecido.</p>
                                             </div>
-                                            <div class="md:col-span-2">
-                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">URL do Vídeo de Fundo (MP4)</label>
-                                                <div class="flex flex-col gap-2">
-                                                    <input value={siteSettings.hero_video || ''} onChange={e => setSiteSettings({ ...siteSettings, hero_video: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="Link externo (opcional)" />
 
-                                                    <div class="relative w-full">
-                                                        <input type="file" name="hero_video_file" accept=".mp4,video/*" onChange={(e) => setVideoFile(e.target.files[0])} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                                        <div class="w-full px-4 py-3 bg-stone-100 border border-stone-200 border-dashed rounded-xl flex items-center justify-center gap-2 text-stone-500 hover:bg-stone-200 transition">
-                                                            <LucideIcon name="upload" className="w-4 h-4" />
-                                                            <span class="text-sm font-medium">{videoFile ? `Arquivo: ${videoFile.name}` : 'Fazer Upload de Arquivo MP4'}</span>
+                                            <div class="md:col-span-2 space-y-4 pt-4 border-t border-stone-100">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 block">Imagens do Carrossel (Recomendado: 1920x1080)</label>
+                                                
+                                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                                    {(() => {
+                                                        let banners = [];
+                                                        try { banners = JSON.parse(siteSettings.hero_banners || '[]'); } catch(e) {}
+                                                        return banners.map((url, idx) => (
+                                                            <div key={idx} class="relative aspect-video rounded-xl overflow-hidden border border-stone-200 group">
+                                                                <img src={url} class="w-full h-full object-cover" />
+                                                                <button type="button" onClick={() => {
+                                                                    const newBanners = banners.filter((_, i) => i !== idx);
+                                                                    setSiteSettings({ ...siteSettings, hero_banners: JSON.stringify(newBanners) });
+                                                                }} class="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition shadow-lg">
+                                                                    <LucideIcon name="trash-2" className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        ))
+                                                    })()}
+                                                    
+                                                    {bannerFiles.map((file, idx) => (
+                                                        <div key={'new-'+idx} class="relative aspect-video rounded-xl overflow-hidden border-2 border-dashed border-moriah-brown bg-stone-50 flex items-center justify-center">
+                                                            <p class="text-[8px] font-bold text-moriah-brown text-center px-1 truncate">{file.name}</p>
+                                                            <div class="absolute inset-0 bg-moriah-brown/10 animate-pulse pointer-events-none"></div>
+                                                            <button type="button" onClick={() => {
+                                                                setBannerFiles(bannerFiles.filter((_, i) => i !== idx));
+                                                            }} class="absolute top-1 right-1 bg-stone-400 text-white p-1 rounded-full">
+                                                                <LucideIcon name="x" className="w-2.5 h-2.5" />
+                                                            </button>
                                                         </div>
-                                                    </div>
+                                                    ))}
                                                 </div>
-                                                <p class="text-[10px] text-stone-400 mt-1">Ao fazer o upload enviando o botão 'Atualizar', a URL acima será substituída.</p>
+
+                                                <label class="flex flex-col items-center justify-center gap-3 w-full h-32 bg-stone-50 border-2 border-dashed border-stone-200 rounded-2xl cursor-pointer hover:bg-stone-100 transition group">
+                                                    <div class="bg-white p-3 rounded-full shadow-sm group-hover:scale-110 transition">
+                                                        <LucideIcon name="plus" className="w-6 h-6 text-moriah-brown" />
+                                                    </div>
+                                                    <div class="text-center">
+                                                        <p class="text-sm font-bold text-stone-700">Adicionar Novos Banners</p>
+                                                        <p class="text-[10px] text-stone-400 uppercase tracking-widest">Multi-upload (JPG, PNG, WEBP)</p>
+                                                    </div>
+                                                    <input type="file" multiple accept="image/*" class="hidden" onChange={(e) => {
+                                                        const files = Array.from(e.target.files);
+                                                        setBannerFiles(prev => [...prev, ...files]);
+                                                    }} />
+                                                </label>
                                             </div>
                                         </div>
                                     </div>
@@ -2549,7 +2619,9 @@ Qualquer dúvida, estamos à disposição!`;
 
             if (!currentUser) {
                 const params = new URLSearchParams(window.location.search);
-                if (params.get('tap_result') || params.get('ip_paid')) {
+                const isTap = params.get('tap_result') || params.get('ip_paid');
+                console.warn('[AUTH] currentUser vazio.', isTap ? 'Redirecionamento InfinitePay detectado.' : 'Acesso comum.');
+                if (isTap) {
                     return (
                         <div class="flex items-center justify-center h-screen bg-stone-50 w-full">
                             <div class="text-center p-8 bg-white rounded-3xl shadow-xl border border-stone-100">

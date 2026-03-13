@@ -2,6 +2,7 @@
 const express = require('express');
 const axios = require('axios');
 const { getDb } = require('../config/database');
+const { authenticateJWT } = require('../middleware/auth');
 const { broadcastStockUpdate } = require('../services/sseService');
 
 const router = express.Router();
@@ -11,7 +12,7 @@ const INFINITEPAY_HANDLE = process.env.INFINITEPAY_HANDLE || 'cafemoriah';
 const PDV_BASE_URL = process.env.PDV_BASE_URL || 'https://app.cafemoriah.com.br';
 
 // POST /api/pdv/charge  (cobrança Asaas presencial)
-router.post('/charge', async (req, res, next) => {
+router.post('/charge', authenticateJWT, async (req, res, next) => {
     if (!ASAAS_API_KEY)
         return res.status(400).json({ error: 'Asaas não configurado. Defina ASAAS_API_KEY.' });
 
@@ -41,7 +42,7 @@ router.post('/charge', async (req, res, next) => {
 });
 
 // GET /api/pdv/payment-status/:payment_id
-router.get('/payment-status/:payment_id', async (req, res, next) => {
+router.get('/payment-status/:payment_id', authenticateJWT, async (req, res, next) => {
     if (!ASAAS_API_KEY) return res.status(400).json({ error: 'Asaas não configurado.' });
     try {
         const r = await axios.get(`${ASAAS_URL}/payments/${req.params.payment_id}`, {
@@ -53,7 +54,7 @@ router.get('/payment-status/:payment_id', async (req, res, next) => {
 });
 
 // POST /api/pdv/infinitepay/charge
-router.post('/infinitepay/charge', async (req, res, next) => {
+router.post('/infinitepay/charge', authenticateJWT, async (req, res, next) => {
     const { total, items, cardType } = req.body;
     if (!total || total <= 0) return res.status(400).json({ error: 'Valor inválido.' });
     if (!items || !items.length) return res.status(400).json({ error: 'Carrinho vazio.' });
@@ -131,7 +132,7 @@ router.post('/infinitepay/charge', async (req, res, next) => {
 });
 
 // GET /api/pdv/infinitepay/status/:sale_id
-router.get('/infinitepay/status/:sale_id', async (req, res, next) => {
+router.get('/infinitepay/status/:sale_id', authenticateJWT, async (req, res, next) => {
     try {
         const db = getDb();
         const [rows] = await db.query('SELECT status, method FROM sales WHERE id = ?', [req.params.sale_id]);
@@ -141,7 +142,7 @@ router.get('/infinitepay/status/:sale_id', async (req, res, next) => {
 });
 
 // PUT /api/pdv/sales/:id/confirm
-router.put('/sales/:id/confirm', async (req, res, next) => {
+router.put('/sales/:id/confirm', authenticateJWT, async (req, res, next) => {
     const { method } = req.body;
     try {
         const db = getDb();
@@ -151,7 +152,7 @@ router.put('/sales/:id/confirm', async (req, res, next) => {
 });
 
 // POST /api/pdv/infinitepay/tap (Tap to Pay nativo)
-router.post('/infinitepay/tap', async (req, res, next) => {
+router.post('/infinitepay/tap', authenticateJWT, async (req, res, next) => {
     const { total, items, cardType } = req.body;
     if (!total || total <= 0) return res.status(400).json({ error: 'Valor inválido.' });
     if (!items || !items.length) return res.status(400).json({ error: 'Carrinho vazio.' });
@@ -250,7 +251,7 @@ router.get('/receipt/:sale_id', async (req, res, next) => {
 
 // POST /api/pdv/send-receipt
 const whatsappService = require('../services/whatsappService');
-router.post('/send-receipt', async (req, res, next) => {
+router.post('/send-receipt', authenticateJWT, async (req, res, next) => {
     const { phone, sale_id, message } = req.body;
     if (!phone || !sale_id) return res.status(400).json({ error: 'Telefone e ID da venda são obrigatórios.' });
 

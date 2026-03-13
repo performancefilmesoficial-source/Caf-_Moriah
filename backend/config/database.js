@@ -107,11 +107,13 @@ async function initTables(db, mysql) {
         about_text_2 TEXT,
         about_image MEDIUMTEXT,
         about_image_align TEXT,
+        hero_banners MEDIUMTEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     try { await db.run('ALTER TABLE site_settings ADD COLUMN hero_video_opacity TEXT'); } catch (_) { }
     try { await db.run('ALTER TABLE site_settings ADD COLUMN hero_text_align TEXT'); } catch (_) { }
     try { await db.run('ALTER TABLE site_settings ADD COLUMN about_image_align TEXT'); } catch (_) { }
+    try { await db.run('ALTER TABLE site_settings ADD COLUMN hero_banners MEDIUMTEXT'); } catch (_) { }
     if (mysql) {
         try { await db.run('ALTER TABLE site_settings MODIFY COLUMN hero_video MEDIUMTEXT'); } catch (_) { }
         try { await db.run('ALTER TABLE site_settings MODIFY COLUMN about_image MEDIUMTEXT'); } catch (_) { }

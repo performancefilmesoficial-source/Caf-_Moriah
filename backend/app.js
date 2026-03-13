@@ -39,7 +39,7 @@ app.use(helmet({ contentSecurityPolicy: false }));
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 const allowedOrigins = process.env.NODE_ENV === 'production'
-    ? ['https://cafemoriah.com.br', 'https://www.cafemoriah.com.br']
+    ? ['https://cafemoriah.com.br', 'https://www.cafemoriah.com.br', 'https://app.cafemoriah.com.br']
     : true; // Em dev, aceita qualquer origem
 
 app.use(cors({
@@ -49,8 +49,8 @@ app.use(cors({
 }));
 
 // ─── Body parsers ─────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ─── Rate limit global ────────────────────────────────────────────────────────
 app.use('/api/', apiLimiter);
@@ -63,13 +63,32 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', message: 'Moriah PDV Backend funcionando!', ts: Date.now() });
 });
 
-// ─── Rota de upload de imagem (converte para Base64) ──────────────────────────
-const uploadMiddleware = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+// ─── Rota de upload de arquivos (Salva em disco) ─────────────────────────────
+const fs = require('fs');
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = path.join(__dirname, '..', 'uploads', 'products');
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+    }
+});
+
+const uploadMiddleware = multer({ 
+    storage, 
+    limits: { fileSize: 50 * 1024 * 1024 } // Aumentado para 50MB para suportar vídeos
+});
+
 app.post('/api/upload', uploadMiddleware.single('image'), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
-    const mime = req.file.mimetype || 'image/jpeg';
-    const base64 = req.file.buffer.toString('base64');
-    res.json({ imageUrl: `data:${mime};base64,${base64}` });
+    if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+    
+    // Retorna o caminho relativo que será servido pelo express.static
+    const imageUrl = `/uploads/products/${req.file.filename}`;
+    res.json({ imageUrl });
 });
 
 // ─── Rota IA (gerador de SKU/descrição via Gemini) ───────────────────────────

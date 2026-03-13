@@ -211,11 +211,10 @@
 
             const [siteSettings, setSiteSettings] = React.useState({
                 hero_title: 'O Café dos Seus Sonhos',
-                hero_subtitle: 'Experiência Sensorial',
                 hero_text: 'Grãos selecionados das melhores origens do Brasil...',
-                hero_video: 'https://player.vimeo.com/external/434045526.sd.mp4?s=c27ee3440e69888a7cd7c992d9d13db38c64d99c&profile_id=164&oauth2_token_id=57447761',
+                hero_video: '',
+                hero_banners: '[]',
                 about_title: 'Descubra Nossa História',
-                about_subtitle: 'Tradição & Afeto',
                 about_text_1: 'Nascida do amor profundo...',
                 about_text_2: 'Trabalhamos lado a lado...',
                 about_image: 'https://images.unsplash.com/photo-1611162458324-aae1eb4129a4'
@@ -319,6 +318,24 @@
             };
 
             const Hero = () => {
+                const [currentIndex, setCurrentIndex] = React.useState(0);
+                const banners = React.useMemo(() => {
+                    try {
+                        const parsed = JSON.parse(siteSettings.hero_banners || '[]');
+                        return parsed.length > 0 ? parsed : ['https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1920&q=80'];
+                    } catch (e) {
+                        return ['https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1920&q=80'];
+                    }
+                }, [siteSettings.hero_banners]);
+
+                React.useEffect(() => {
+                    if (banners.length <= 1) return;
+                    const interval = setInterval(() => {
+                        setCurrentIndex(prev => (prev + 1) % banners.length);
+                    }, 5000); // 5 segundos
+                    return () => clearInterval(interval);
+                }, [banners]);
+
                 const scrollToSection = (e, id) => {
                     e.preventDefault();
                     const element = document.getElementById(id);
@@ -331,36 +348,55 @@
                 };
 
                 return (
-                    <section className="relative bg-moriah-black text-white overflow-hidden flex items-center justify-center min-h-[35vh] md:min-h-[40vh] py-12 md:py-16" id="inicio">
+                    <section className="relative bg-moriah-black text-white overflow-hidden flex items-center justify-center min-h-[50vh] md:min-h-[70vh] py-12 md:py-20" id="inicio">
+                        {/* Carrossel de Imagens */}
                         <div className="absolute inset-0 z-0">
-                            <video
-                                className="w-full h-full object-cover mix-blend-overlay"
-                                style={{ opacity: siteSettings.hero_video_opacity || 0.6 }}
-                                autoPlay
-                                loop
-                                muted
-                                playsInline
-                                key={siteSettings.hero_video || 'fallback'} // Força recarregamento caso mude no painel
-                            >
-                                <source src={siteSettings.hero_video || ''} type="video/mp4" />
-                                Seu navegador não suporta vídeos.
-                            </video>
-                            <div className="absolute inset-0 bg-gradient-to-t from-moriah-black via-moriah-black/60 to-transparent"></div>
+                            {banners.map((url, idx) => (
+                                <div 
+                                    key={idx}
+                                    className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${idx === currentIndex ? 'opacity-100' : 'opacity-0'}`}
+                                >
+                                    <img 
+                                        src={url} 
+                                        className="w-full h-full object-cover" 
+                                        alt={`Banner ${idx + 1}`}
+                                    />
+                                    {/* Overlay escuro dinâmico */}
+                                    <div 
+                                        className="absolute inset-0 bg-moriah-black" 
+                                        style={{ opacity: siteSettings.hero_video_opacity || 0.6 }}
+                                    ></div>
+                                </div>
+                            ))}
+                            <div className="absolute inset-0 bg-gradient-to-t from-moriah-black via-transparent to-transparent opacity-60"></div>
                         </div>
 
-                        <div className={`relative z-10 ${siteSettings.hero_text_align || 'text-center'} max-w-4xl mx-auto mt-6 md:mt-10 px-4`}>
-
-                            <h1 className="font-sans text-3xl md:text-5xl lg:text-7xl mb-6 font-bold leading-tight drop-shadow-xl whitespace-pre-line">
-                                {siteSettings.hero_title || 'Nossa Vitrine'}
+                        <div className={`relative z-10 ${siteSettings.hero_text_align || 'text-center'} max-w-4xl mx-auto px-4 mt-8`}>
+                            <h1 className="font-sans text-4xl md:text-6xl lg:text-8xl mb-6 font-bold leading-tight drop-shadow-2xl whitespace-pre-line animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                                {siteSettings.hero_title || 'Moriah Café'}
                             </h1>
-                            <p className="text-stone-300 md:text-lg font-light max-w-2xl mx-auto mb-8 drop-shadow-lg leading-relaxed whitespace-pre-line">
-                                {siteSettings.hero_text || 'Aqui você encontra os melhores produtos.'}
+                            <p className="text-stone-200 md:text-xl font-light max-w-2xl mx-auto mb-10 drop-shadow-lg leading-relaxed whitespace-pre-line animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-300">
+                                {siteSettings.hero_text || 'Onde o café encontra o ritual.'}
                             </p>
 
-                            <button onClick={(e) => scrollToSection(e, 'produtos')} className="bg-moriah-gold text-moriah-black font-semibold px-8 py-4 rounded-full shadow-gold hover:-translate-y-1 transition transform duration-300 flex items-center mx-auto gap-3 text-base hover:shadow-xl">
-                                Explorar Cafés Especiais <LucideIcon name="arrow-right" className="w-5 h-5" />
+                            <button onClick={(e) => scrollToSection(e, 'produtos')} className="bg-moriah-gold text-moriah-black font-bold px-10 py-5 rounded-full shadow-gold hover:shadow-2xl hover:-translate-y-1 transition transform duration-300 flex items-center mx-auto gap-3 text-lg group">
+                                Explorar Cafés Especiais 
+                                <LucideIcon name="arrow-right" className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                             </button>
                         </div>
+                        
+                        {/* Indicadores do Carrossel */}
+                        {banners.length > 1 && (
+                            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex gap-2">
+                                {banners.map((_, idx) => (
+                                    <button 
+                                        key={idx}
+                                        onClick={() => setCurrentIndex(idx)}
+                                        className={`w-2 h-2 rounded-full transition-all duration-300 ${idx === currentIndex ? 'bg-moriah-gold w-8' : 'bg-white/40 hover:bg-white/60'}`}
+                                    ></button>
+                                ))}
+                            </div>
+                        )}
                     </section>
                 );
             };
