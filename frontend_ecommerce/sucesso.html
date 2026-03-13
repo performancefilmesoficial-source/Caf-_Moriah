@@ -90,6 +90,19 @@
 
     <script>
         lucide.createIcons();
+
+        // Fetch dynamic settings
+        fetch('/api/site-settings')
+            .then(res => res.json())
+            .then(data => {
+                if (data.logo_url) {
+                    document.querySelectorAll('img[src="logo.png"]').forEach(img => img.src = data.logo_url);
+                }
+                if (data.site_title) {
+                    document.title = `Pedido Confirmado | ${data.site_title}`;
+                }
+            })
+            .catch(() => {});
     </script>
 </body>
 

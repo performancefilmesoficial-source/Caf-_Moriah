@@ -93,15 +93,19 @@ router.post('/', checkoutLimiter, async (req, res, next) => {
             await saveOrder(fakeId, 'Aguardando Pagamento');
 
             broadcastStockUpdate(cartItems.map(i => ({ product_id: i.id, quantity: i.quantity })));
-            notifyOwnerNewOrder({ customerName, customerPhone, customerCep, totalAmount, billingType, shippingService, shippingCost, cartItems });
+            notifyOwnerNewOrder({ customerName, customerPhone, customerCpf, totalAmount, billingType, shippingService, shippingCost, cartItems });
 
-            const pixPayload = `00020126360014BR.GOV.BCB.PIX0114+5575992073245520400005303986540${parseFloat(totalAmount).toFixed(2)}5802BR5912MORIAH CAFE6009SAO PAULO62070503***6304ABCD`;
+            // Busca whats das settings
+            const [settings] = await db.query('SELECT whatsapp_number FROM site_settings LIMIT 1');
+            const whats = settings[0]?.whatsapp_number || '5575992073245';
+
+            const pixPayload = `00020126360014BR.GOV.BCB.PIX0114+${whats}520400005303986540${parseFloat(totalAmount).toFixed(2)}5802BR5912MORIAH CAFE6009SAO PAULO62070503***6304ABCD`;
             return res.json({
                 success: true,
                 sale_id: fakeId,
                 pixPayload,
                 encodedImage: null,
-                invoiceUrl: 'https://wa.me/5575992073245?text=Olá%2C+fiz+um+pedido+no+site',
+                invoiceUrl: `https://wa.me/${whats}?text=Olá%2C+fiz+um+pedido+no+site`,
                 note: 'Pedido registrado. Entre em contato via WhatsApp para confirmar o pagamento.'
             });
         } catch (err) {

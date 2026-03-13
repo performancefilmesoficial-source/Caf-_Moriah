@@ -243,7 +243,8 @@
             });
 
             React.useEffect(() => {
-                fetch('/api/site-settings', { cache: 'no-store' })
+                // Cache-busting com timestamp para garantir dados novos pós-salvamento
+                fetch(`/api/site-settings?t=${Date.now()}`, { cache: 'no-store' })
                     .then(r => r.json())
                     .then(data => {
                         if (data) {
@@ -576,7 +577,12 @@
                             <h4 className="font-sans text-lg font-bold mb-6 text-white tracking-wide">Acessos Rápidos</h4>
                             <ul className="space-y-3 font-light text-stone-400">
                                 <li><button onClick={() => setIsTrackingOpen(true)} className="text-moriah-gold hover:text-white transition font-bold flex items-center gap-2"><LucideIcon name="package-search" className="w-4 h-4" /> Rastrear Meu Pedido</button></li>
-                                <li><a href="#" className="hover:text-moriah-gold transition underline">Política de Trocas e Devoluções</a></li>
+                                {siteSettings.instagram_url && (
+                                    <li><a href={siteSettings.instagram_url} target="_blank" className="hover:text-moriah-gold transition underline">Siga no Instagram</a></li>
+                                )}
+                                {siteSettings.contact_email && (
+                                    <li><a href={`mailto:${siteSettings.contact_email}`} className="hover:text-moriah-gold transition underline break-all">{siteSettings.contact_email}</a></li>
+                                )}
                                 <li><a href="#" className="hover:text-moriah-gold transition">Dúvidas Frequentes</a></li>
                                 {siteSettings.whatsapp_number && (
                                     <li><a href={`https://wa.me/${siteSettings.whatsapp_number}?text=Olá,%20Moriah%20Café!`} target="_blank" className="hover:text-green-500 transition font-bold flex items-center gap-2"><LucideIcon name="message-circle" className="w-4 h-4" /> ({siteSettings.whatsapp_number.length > 10 ? `${siteSettings.whatsapp_number.slice(2, 4)}) ${siteSettings.whatsapp_number.slice(4, 9)}-${siteSettings.whatsapp_number.slice(9)}` : siteSettings.whatsapp_number})</a></li>
@@ -610,7 +616,7 @@
                     <div className="max-w-7xl mx-auto pt-8 mt-12 border-t border-white/10 flex flex-col md:flex-row items-center justify-between text-xs text-stone-500 font-light gap-4">
                         <div className="text-center md:text-left">
                             {siteSettings.footer_text && <p className="mb-1 uppercase tracking-widest text-stone-400">&copy; {new Date().getFullYear()} {siteSettings.footer_text}</p>}
-                            {siteSettings.cnpj && <p>MORIAH CAFE LTDA - CNPJ: {siteSettings.cnpj}</p>}
+                            {siteSettings.cnpj && <p>CNPJ: {siteSettings.cnpj}</p>}
                             {siteSettings.address && <p>{siteSettings.address}</p>}
                         </div>
                         <div className="flex gap-4">

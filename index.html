@@ -177,9 +177,12 @@
                 if ((res.status === 401 || res.status === 403) && !url.includes('/api/auth/login')) {
                     console.error(`[AUTH] Erro ${res.status} em: ${url}. Token presente: ${!!token}`);
                     
-                    // Se estivermos em um processo de retorno de pagamento, evitamos o logout imediato
-                    // para dar chance ao sistema de recuperar a sessão ou processar o retorno.
-                    const isPaymentReturn = window.location.search.includes('ip_paid') || window.location.search.includes('tap_result');
+                    // Verificação robusta de retorno de pagamento (InfinitePay)
+                    const search = window.location.search;
+                    const isPaymentReturn = search.includes('ip_paid') || search.includes('sale_id') || 
+                                          search.includes('ip_cancelled') || 
+                                          search.includes('tap_result') ||
+                                          localStorage.getItem('ip_pending') || localStorage.getItem('moriah_last_sale');
                     
                     if (!isPaymentReturn) {
                         localStorage.removeItem('moriah_jwt');
@@ -581,6 +584,55 @@
             );
         };
 
+        const InfinitePayReturnView = ({ id, isApproved, isPendingRecovery }) => {
+            const [status, setStatus] = React.useState('processing'); // processing, paid, cancelled, error
+            
+            React.useEffect(() => {
+                // Polling do status (Opcional apenas para feedback visual, não auto-finaliza mais)
+                const check = async () => {
+                    try {
+                        const r = await fetch(`/api/pdv/infinitepay/status/${id}`);
+                        if (r.ok) {
+                            const data = await r.json();
+                            if (data.paid) { setStatus('paid'); return true; }
+                            else if (data.status === 'Cancelado') { setStatus('cancelled'); return true; }
+                        }
+                    } catch (e) {}
+                    return false;
+                };
+                const interval = setInterval(check, 3000);
+                check();
+                return () => clearInterval(interval);
+            }, [id]);
+
+            const configMap = {
+                processing: { icon: 'loader', color: 'text-moriah-brown animate-spin', title: 'Processando...', sub: 'Aguardando resposta da maquininha.' },
+                paid: { icon: 'check-circle', color: 'text-emerald-500', title: 'Pagamento Detectado', sub: 'Clique abaixo para voltar e FINALIZAR a venda.' },
+                cancelled: { icon: 'x-circle', color: 'text-red-500', title: 'Não Concluído', sub: 'O processo foi cancelado na maquininha.' },
+                error: { icon: 'alert-triangle', color: 'text-amber-500', title: 'Atenção', sub: 'Não conseguimos confirmar o status agora.' }
+            };
+            const config = configMap[status] || configMap.error;
+
+            return (
+                <div class="fixed inset-0 bg-stone-50 flex items-center justify-center p-4 z-[999]">
+                    <div class="bg-white w-full max-w-sm rounded-[40px] shadow-2xl overflow-hidden p-10 flex flex-col items-center text-center animate-in fade-in zoom-in duration-500">
+                        <div class={`w-20 h-20 bg-stone-50 rounded-full flex items-center justify-center mb-6 ${config.color}`}>
+                            <LucideIcon name={config.icon} className="w-10 h-10" />
+                        </div>
+                        <h2 class="text-2xl font-black text-stone-900 mb-2">{config.title}</h2>
+                        <p class="text-stone-500 text-sm mb-8">{config.sub}</p>
+                        
+                        <button onClick={() => window.location.href = '/'} class="w-full py-4 bg-stone-900 text-white rounded-2xl font-bold hover:bg-black transition-all shadow-lg flex items-center justify-center gap-2 mb-4">
+                            <LucideIcon name="arrow-left" className="w-5 h-5" />
+                            VOLTAR AO PDV
+                        </button>
+
+                        <p class="text-[10px] text-stone-300 mt-2 uppercase tracking-widest font-bold">Moriah Café · Validação de Venda</p>
+                    </div>
+                </div>
+            );
+        };
+
         const FONT_OPTIONS = [
             { value: 'sans',       label: 'Padrão (Sem Serifa)',  style: 'system-ui, sans-serif' },
             { value: 'serif',      label: 'Clássico (Georgia)',    style: 'Georgia, serif' },
@@ -595,9 +647,13 @@
                 try {
                     const saved = localStorage.getItem('moriah_current_user');
                     const token = localStorage.getItem('moriah_jwt');
-                    console.log('[AUTH] Inicializando App. User na Storage:', saved ? 'Sim' : 'Não', 'Token na Storage:', token ? 'Sim' : 'Não');
-                    return saved ? JSON.parse(saved) : null;
-                } catch { return null; }
+                    console.log('[AUTH] Init App. User:', saved ? 'OK' : 'NULL', 'Token:', token ? 'OK' : 'NULL');
+                    if (!token || !saved) return null;
+                    return JSON.parse(saved);
+                } catch (e) { 
+                    console.error('[AUTH] Erro ao ler storage:', e);
+                    return null; 
+                }
             });
             const [view, setView] = useState('pos');
             const [products, setProducts] = useState([]);
@@ -666,19 +722,14 @@
                         const { sale_id, result } = JSON.parse(e.data);
                         const waiting = ipWaitingRef.current;
                         if (!waiting || sale_id !== waiting.sale_id) return;
-                        clearInterval(ipPollingRef.current);
-                        setIpWaiting(null);
-                        setIsManualConfirmOpen(false);
-                        localStorage.removeItem('ip_pending');
+                        
+                        // Passo 3: Detectou o resultado, agora apenas abre o modal de validação manual
+                        // NÃO fecha o waiting, não limpa carrinho, não dá sucesso automático.
+                        setIsManualConfirmOpen(true);
+                        
+                        // Opcional: Notifica apenas para feedback visual
                         if (result === 'approved') {
-                            setCart([]);
-                            setDiscount(0);
-                            setLastSale({ id: sale_id, total: waiting.total, method: waiting.method, items: cartRef.current });
-                            addNotification('Venda Confirmada', 'InfinitePay: pagamento aprovado!', 'success');
-                            setIsSuccessModalOpen(true);
-                        } else {
-                            addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
-                            setIsCheckoutOpen(true);
+                            addNotification('Pagamento Detectado', 'Aguardando validação manual.', 'info');
                         }
                     });
                     es.onerror = () => { /* reconexão automática pelo browser */ };
@@ -696,19 +747,9 @@
                     if (msg.type !== 'ip_result') return;
                     const waiting = ipWaitingRef.current;
                     if (!waiting || msg.sale_id !== waiting.sale_id) return;
-                    clearInterval(ipPollingRef.current);
-                    setIpWaiting(null);
-                    setIsManualConfirmOpen(false);
-                    localStorage.removeItem('ip_pending');
-                    if (msg.result === 'approved') {
-                        setCart([]);
-                        setDiscount(0);
-                        setLastSale({ id: msg.sale_id, total: waiting.total, method: waiting.method, items: cartRef.current });
-                        addNotification('Venda Confirmada', 'InfinitePay: pagamento aprovado!', 'success');
-                        setIsSuccessModalOpen(true);
-                    } else {
-                        addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
-                        setIsCheckoutOpen(true);
+                    if (msg.result === 'approved' || msg.result === 'cancelled') {
+                        // Apenas garante que o modal de validação esteja aberto
+                        setIsManualConfirmOpen(true);
                     }
                 };
                 return () => bc.close();
@@ -883,9 +924,15 @@
             const [users, setUsers] = useState([]);
 
             // Persiste sessão local (só o objeto do usuário, sem senha)
+            // Sincroniza usuário com Storage APENAS em mudanças reais de login/logout
             useEffect(() => {
-                if (currentUser) localStorage.setItem('moriah_current_user', JSON.stringify(currentUser));
-                else localStorage.removeItem('moriah_current_user');
+                if (currentUser) {
+                    localStorage.setItem('moriah_current_user', JSON.stringify(currentUser));
+                } else if (currentUser === null) {
+                    // Só remove se for explicitamente deslogado, não na inicialização
+                    const token = localStorage.getItem('moriah_jwt');
+                    if (!token) localStorage.removeItem('moriah_current_user');
+                }
             }, [currentUser]);
 
             // Detecta retorno do InfinitePay na URL:
@@ -895,63 +942,32 @@
             // Em ambos os casos, o resultado é transmitido via BroadcastChannel para todas as abas abertas.
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
-                const paidId = params.get('ip_paid');
-                const cancelledId = params.get('ip_cancelled');
-                const tapResult = params.get('tap_result');
-                const saleId = params.get('sale_id');
+                const targetId = params.get('ip_paid') || params.get('ip_cancelled') || params.get('sale_id');
 
-                const targetId = paidId || cancelledId || saleId;
                 if (!targetId) return;
 
-                const isApproved = !!paidId;
-                const isCancelled = !!cancelledId;
-                console.log("[PDV] Retorno InfinitePay na URL:", { targetId, isApproved, isCancelled });
+                console.log("[PDV] Retorno InfinitePay detectado. Abrindo validação manual.");
 
-                // Limpa a URL imediatamente para evitar re-processamento
-                window.history.replaceState({}, '', window.location.pathname);
-
-                // Notifica todas as abas abertas do PDV (incluindo a aba original com o modal de aguardo)
-                if (window.BroadcastChannel) {
-                    try {
-                        const bc = new BroadcastChannel('moriah_pdv_ip');
-                        bc.postMessage({ type: 'ip_result', sale_id: parseInt(targetId), result: isApproved ? 'approved' : 'cancelled' });
-                        bc.close();
-                    } catch (_) {}
-                }
-
-                // Processa localmente — SEMPRE, independente de ipWaiting.
-                // O InfinitePay pode recarregar esta mesma aba (state zerado), ou abrir nova aba.
-                // Em ambos os casos queremos tratar o resultado.
                 const timer = setTimeout(() => {
                     const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
-
-                    if (isApproved) {
-                        apiFetch(`/api/pdv/infinitepay/status/${targetId}`)
-                            .then(r => r.ok ? r.json() : null)
-                            .then(data => {
-                                if (!data?.paid) return;
-                                clearInterval(ipPollingRef.current);
-                                setIpWaiting(null);
-                                setIsManualConfirmOpen(false);
-                                setCart([]);
-                                setDiscount(0);
-                                if (pending) setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
-                                setIsSuccessModalOpen(true);
-                                localStorage.removeItem('ip_pending');
-                            })
-                            .catch(err => console.error("[PDV] Erro ao verificar status:", err));
-                    } else if (isCancelled) {
-                        clearInterval(ipPollingRef.current);
-                        setIpWaiting(null);
-                        setIsManualConfirmOpen(false);
-                        localStorage.removeItem('ip_pending');
-                        addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
-                        setIsCheckoutOpen(true);
+                    
+                    // Se perdeu o estado da aba original (reload), restaura para o waiting
+                    if (pending && !ipWaiting) {
+                        setIpWaiting(pending);
                     }
+                    if (cartRef.current.length === 0 && pending?.cart) {
+                        setCart(pending.cart);
+                    }
+
+                    // Passo 3: Exibir modal de validação com duas opções
+                    setIsManualConfirmOpen(true);
+                    
+                    // Limpa a URL
+                    window.history.replaceState({}, '', window.location.pathname);
                 }, 800);
 
                 return () => clearTimeout(timer);
-            }, [currentUser]);
+            }, []);
 
             // visibilitychange: detecta quando o usuário volta para o browser após sair para o InfinitePay.
             // Se o InfinitePay não chamar a result_url automaticamente, este evento pega o retorno manual.
@@ -973,24 +989,10 @@
                         if (!r.ok) return;
                         const data = await r.json();
 
-                        if (data.paid) {
-                            clearInterval(ipPollingRef.current);
-                            setIpWaiting(null);
-                            setIsManualConfirmOpen(false);
-                            setCart([]);
-                            setDiscount(0);
-                            if (pending || waiting) {
-                                const src = pending || waiting;
-                                setLastSale({ id: saleId, total: src.total, method: src.method, items: src.cart || cartRef.current });
-                            }
-                            setIsSuccessModalOpen(true);
-                            localStorage.removeItem('ip_pending');
-                        } else if (data.status === 'Cancelado') {
-                            clearInterval(ipPollingRef.current);
-                            setIpWaiting(null);
-                            setIsManualConfirmOpen(false);
-                            localStorage.removeItem('ip_pending');
-                            setIsCheckoutOpen(true);
+                        if (data.paid || data.status === 'Cancelado') {
+                            // Apenas garante que o modal de validação manual esteja aberto.
+                            // NÃO finaliza mais de forma automática.
+                            setIsManualConfirmOpen(true);
                         } else {
                             // Ainda "Aguardando Pagamento" — usuário voltou do InfinitePay.
                             // No iOS/Safari não é possível detectar automaticamente o resultado.
@@ -1018,7 +1020,9 @@
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('ip_paid') || params.get('ip_cancelled')) return; // outro useEffect trata
-                if (!currentUser) return; // aguarda login
+                
+                // Se não há ip_paid/cancelled na URL, mas há no localStorage, tentamos recuperar.
+                // Aqui o currentUser pode ser null (ex: aba morta e session lost), mas o status check é público.
 
                 const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
                 if (!pending?.sale_id) return;
@@ -1029,15 +1033,18 @@
                     headers: token ? { 'Authorization': `Bearer ${token}` } : {}
                 }).then(r => r.ok ? r.json() : null).then(data => {
                     if (!data) return;
-                    if (data.paid) {
-                        setLastSale({ id: pending.sale_id, total: pending.total, method: pending.method, items: pending.cart });
-                        setIsSuccessModalOpen(true);
-                        localStorage.removeItem('ip_pending');
-                    } else if (data.status === 'Cancelado') {
-                        setIsCheckoutOpen(true);
-                        localStorage.removeItem('ip_pending');
+                    if (data.paid || data.status === 'Cancelado') {
+                        // Se perdeu o estado (reload), restaura o carrinho se possível e abre validação
+                        if (cartRef.current.length === 0 && pending?.cart) {
+                            setCart(pending.cart);
+                        }
+                        setIpWaiting({ sale_id: pending.sale_id, total: pending.total, method: pending.method, checkout_url: pending.checkout_url || null, cart: pending.cart });
+                        setIsManualConfirmOpen(true);
                     } else {
                         // Pagamento ainda pendente — restaura o modal de espera e abre confirmação manual
+                        if (cartRef.current.length === 0 && pending?.cart) {
+                            setCart(pending.cart);
+                        }
                         setIpWaiting({ sale_id: pending.sale_id, total: pending.total, method: pending.method, checkout_url: pending.checkout_url || null });
                         setIsManualConfirmOpen(true);
                     }
@@ -1095,55 +1102,61 @@
 
             const addToCart = async (product, grind = null) => {
                 const grindLabel = grind === 'moido' ? 'Pó/Moído' : grind === 'grao' ? 'Em Grão' : null;
-                const res = await cartApiCall('/api/pdv/cart/deduct', { product_id: product.id, quantity: 1, grind: grindLabel });
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    alert(err.error || 'Estoque insuficiente.');
+                
+                // Verificação de estoque local apenas para feedback visual imediato
+                let available = product.stock;
+                if (grindLabel === 'Pó/Moído') available = product.stock_moido || 0;
+                else if (grindLabel === 'Em Grão') available = product.stock_grao || 0;
+
+                const cartKey = grind ? `${product.id}-${grind}` : String(product.id);
+                const existing = cart.find(i => i.cartKey === cartKey);
+                const currentQty = existing ? existing.quantity : 0;
+
+                if (available <= currentQty) {
+                    alert('Estoque insuficiente para este item.');
                     return;
                 }
+
                 const price = grind === 'moido' && parseFloat(product.price_moido) > 0
                     ? parseFloat(product.price_moido)
                     : parseFloat(product.price);
-                const cartKey = grind ? `${product.id}-${grind}` : String(product.id);
-                const displayName = grind === 'moido'
-                    ? `${product.name} (Pó/Moído)`
-                    : grind === 'grao'
-                        ? `${product.name} (Grão)`
-                        : product.name;
+                
+                const displayName = grindLabel ? `${product.name} (${grindLabel})` : product.name;
+
                 setCart(curr => {
-                    const existing = curr.find(i => i.cartKey === cartKey);
                     if (existing) return curr.map(i => i.cartKey === cartKey ? { ...i, quantity: i.quantity + 1 } : i);
                     return [...curr, { ...product, cartKey, price, name: displayName, quantity: 1, grind: grindLabel }];
                 });
             };
 
-            const removeFromCart = async (cartKey) => {
-                const item = cart.find(i => i.cartKey === cartKey);
-                if (!item) return;
-                await cartApiCall('/api/pdv/cart/restore', { product_id: item.id, quantity: item.quantity, grind: item.grind }).catch(() => {});
+            const removeFromCart = (cartKey) => {
                 setCart(curr => curr.filter(i => i.cartKey !== cartKey));
             };
 
             const updateCartQuantity = async (cartKey, delta) => {
                 const item = cart.find(i => i.cartKey === cartKey);
                 if (!item) return;
+
                 const newQty = Math.max(1, item.quantity + delta);
                 if (newQty === item.quantity) return;
-                const endpoint = delta > 0 ? '/api/pdv/cart/deduct' : '/api/pdv/cart/restore';
-                const res = await cartApiCall(endpoint, { product_id: item.id, quantity: Math.abs(delta), grind: item.grind });
-                if (!res.ok && delta > 0) {
-                    const err = await res.json().catch(() => ({}));
-                    alert(err.error || 'Estoque insuficiente.');
-                    return;
+
+                if (delta > 0) {
+                    // Check stock
+                    const prod = products.find(p => p.id === item.id);
+                    let available = prod?.stock || 0;
+                    if (item.grind === 'Pó/Moído') available = prod?.stock_moido || 0;
+                    else if (item.grind === 'Em Grão') available = prod?.stock_grao || 0;
+
+                    if (available < newQty) {
+                        alert('Estoque insuficiente.');
+                        return;
+                    }
                 }
+
                 setCart(curr => curr.map(i => i.cartKey === cartKey ? { ...i, quantity: newQty } : i));
             };
 
-            const emptyCart = async () => {
-                if (!cart.length) return;
-                for (const item of cart) {
-                    await cartApiCall('/api/pdv/cart/restore', { product_id: item.id, quantity: item.quantity, grind: item.grind }).catch(() => {});
-                }
+            const emptyCart = () => {
                 setCart([]);
             };
 
@@ -1276,52 +1289,34 @@
                         return;
                     }
 
-                    const { sale_id } = await res.json();
+                    const { order_nsu, checkout_url } = await res.json();
                     const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
 
-                    // Parâmetros do Deep Link nativo (InfiniteTap) repassados pela InfinitePay
+                    // Deep Link nativo (InfiniteTap)
                     const amountCents = Math.round(total * 100);
-                    const infinitePayMethod = cardType; // 'credit' ou 'debit'
+                    const infinitePayMethod = cardType; 
                     const installments = finalInstallments;
-                    const orderId = `moriah-pdv-${sale_id}`;
-                    // result_url aponta para endpoint backend que confirma a venda no DB
-                    // e redireciona para /?ip_paid=X (tratado pelo useEffect existente)
-                    const resultUrl = encodeURIComponent(`${window.location.origin}/api/pdv/tap-result?sale_id=${sale_id}`);
+                    
+                    // result_url aponta para o PDV com o ID temporário
+                    const resultUrl = encodeURIComponent(`${window.location.origin}/?sale_id=${order_nsu}`);
                     const appClientReferrer = 'MoriahPDV';
-                    const afForceDeeplink = 'true';
+                    const fullCheckoutUrl = `infinitepaydash://infinitetap-app?amount=${amountCents}&payment_method=${infinitePayMethod}&installments=${installments}&order_id=${order_nsu}&result_url=${resultUrl}&app_client_referrer=${appClientReferrer}&af_force_deeplink=true`;
 
-                    const checkout_url = `infinitepaydash://infinitetap-app?amount=${amountCents}&payment_method=${infinitePayMethod}&installments=${installments}&order_id=${orderId}&result_url=${resultUrl}&app_client_referrer=${appClientReferrer}&af_force_deeplink=${afForceDeeplink}`;
+                    // ESTADO PERSISTENTE (CRÍTICO): Salva carrinho e detalhes para finalização posterior
+                    localStorage.setItem('ip_pending', JSON.stringify({ sale_id: order_nsu, total, method: methodLabel, cart, checkout_url: fullCheckoutUrl }));
 
-                    // Salva estado completo para recuperação caso o iOS mate a aba ao voltar do app nativo
-                    localStorage.setItem('ip_pending', JSON.stringify({ sale_id, total, method: methodLabel, cart, checkout_url }));
-
-                    // Em vez de navegar direto (bloqueado pelo android em alguns casos e abre web), 
-                    // mostramos um modal onde o operador tem que clicar explicitamente para abrir a maquininha
-                    setIpWaiting({ sale_id, method: methodLabel, total, checkout_url });
+                    setIpWaiting({ sale_id: order_nsu, method: methodLabel, total, checkout_url: fullCheckoutUrl });
                     setIsCheckoutOpen(false);
 
+                    // POLLING: Apenas detecta se já pode mostrar o botão de finalização, NÃO finaliza sozinho
                     ipPollingRef.current = setInterval(async () => {
                         try {
-                            const statusRes = await apiFetch(`/api/pdv/infinitepay/status/${sale_id}`);
+                            const statusRes = await fetch(`/api/pdv/infinitepay/status/${order_nsu}`);
                             const data = await statusRes.json();
-                            if (data.paid) {
+                            if (data.paid || data.status === 'Cancelado') {
+                                // Quando detecta mudança de status, abre o modal de validação manual
+                                setIsManualConfirmOpen(true);
                                 clearInterval(ipPollingRef.current);
-                                setIpWaiting(null);
-                                setIsManualConfirmOpen(false);
-                                setCart([]);
-                                setDiscount(0);
-                                localStorage.removeItem('ip_pending');
-                                setLastSale({ id: sale_id, total, method: methodLabel, items: cart });
-                                addNotification('Venda Confirmada', `InfinitePay: R$ ${total.toFixed(2)} recebido.`, 'success');
-                                setIsSuccessModalOpen(true);
-                            } else if (data.status === 'Cancelado') {
-                                // Venda cancelada (pelo X no InfinitePay)
-                                clearInterval(ipPollingRef.current);
-                                setIpWaiting(null);
-                                setIsManualConfirmOpen(false);
-                                localStorage.removeItem('ip_pending');
-                                addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
-                                setIsCheckoutOpen(true);
                             }
                         } catch (_) { }
                     }, 3000);
@@ -1340,59 +1335,55 @@
                 }
             };
 
-            const cancelSaleAndClear = async () => {
-                const pending = ipWaiting;
-                // Fecha modais e para polling ANTES de operação assíncrona
-                setIsManualConfirmOpen(false);
-                setIpWaiting(null);
-                clearInterval(ipPollingRef.current);
-                localStorage.removeItem('ip_pending');
-
-                if (!pending?.sale_id) return;
-
-                try {
-                    // noStock=true: itens ainda estão no carrinho, estoque já está reservado
-                    // Usa window.fetch diretamente — evita o auto-logout do apiFetch
-                    const token = localStorage.getItem('moriah_jwt');
-                    const res = await window.fetch(`/api/pdv/sales/${pending.sale_id}/cancel?noStock=true`, {
-                        method: 'PUT',
-                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
-                    });
-                    if (res.ok) {
-                        addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
-                    } else {
-                        console.warn('[PDV] Cancel status', res.status);
-                    }
-                } catch (err) {
-                    console.error('[PDV] Erro ao cancelar venda:', err);
-                }
-                // Re-abre checkout — carrinho continua com os itens
-                setIsCheckoutOpen(true);
-            };
-
-            const confirmManualPayment = async () => {
-                if (!ipWaiting) {
+            const forceFinalizeSale = async () => {
+                const pending = ipWaiting || JSON.parse(localStorage.getItem('ip_pending'));
+                if (!pending) {
                     setIsManualConfirmOpen(false);
                     return;
                 }
+
                 try {
-                    await apiFetch(`/api/pdv/sales/${ipWaiting.sale_id}/confirm`, {
-                        method: 'PUT',
+                    // Passo 4: Registrar venda e abaixar estoque no backend de forma atômica
+                    const res = await apiFetch('/api/pdv/finalize-sale', {
+                        method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ method: ipWaiting.method })
+                        body: JSON.stringify({
+                            total: pending.total,
+                            items: pending.cart,
+                            method: pending.method,
+                            customerName: 'Cliente PDV'
+                        })
                     });
-                    setCart([]);
-                    setDiscount(0);
-                    setLastSale({ id: ipWaiting.sale_id, total: ipWaiting.total, method: ipWaiting.method, items: cart });
-                    addNotification('Venda Confirmada (Manual)', `Venda de R$ ${ipWaiting.total.toFixed(2)} confirmada manualmente.`, 'info');
-                    setIsSuccessModalOpen(true);
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        setIpWaiting(null);
+                        setIsManualConfirmOpen(false);
+                        setCart([]);
+                        setDiscount(0);
+                        localStorage.removeItem('ip_pending');
+                        setLastSale({ id: data.sale_id, total: pending.total, method: pending.method, items: pending.cart });
+                        addNotification('Venda Finalizada', 'Registro concluído e estoque atualizado.', 'success');
+                        setIsSuccessModalOpen(true);
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        alert('Erro ao finalizar venda: ' + (err.error || 'Erro no servidor'));
+                    }
                 } catch (err) {
-                    console.error("Erro confirmação manual:", err);
-                    alert("Erro ao confirmar manual");
-                } finally {
-                    setIsManualConfirmOpen(false);
-                    setIpWaiting(null);
+                    console.error("Erro finalização:", err);
+                    alert('Erro de conexão ao finalizar.');
                 }
+            };
+
+            const cancelSaleAndClear = () => {
+                // Passo 5: Apenas limpa tudo sem tocar no banco/estoque
+                setIsManualConfirmOpen(false);
+                setIpWaiting(null);
+                if (ipPollingRef.current) clearInterval(ipPollingRef.current);
+                localStorage.removeItem('ip_pending');
+                setCart([]);
+                setDiscount(0);
+                addNotification('Venda Cancelada', 'Carrinho esvaziado. Estoque intacto.', 'warning');
             };
 
             const sendWhatsAppReceipt = () => {
@@ -1963,15 +1954,15 @@ Qualquer dúvida, estamos à disposição!`;
                                                 <LucideIcon name="help-circle" className="w-8 h-8 text-amber-500" />
                                             </div>
                                             <div>
-                                                <h3 class="text-xl font-black text-stone-900">Confirmação Manual</h3>
-                                                <p class="text-stone-500 text-sm mt-2">O pagamento foi processado com sucesso na maquininha externa?</p>
+                                                <h3 class="text-xl font-black text-stone-900">Validar Venda</h3>
+                                                <p class="text-stone-500 text-sm mt-2">O pagamento foi <strong>APROVADO</strong> na maquininha? <br/><br/> Clique em <b>FINALIZAR</b> para baixar o estoque e registrar a venda.</p>
                                             </div>
                                             <div class="flex flex-col gap-3 w-full">
-                                                <button onClick={confirmManualPayment} class="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 active:scale-95">
-                                                    <LucideIcon name="check-circle" className="w-6 h-6" /> Sim, Confirmar Venda
+                                                <button onClick={forceFinalizeSale} class="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 active:scale-95">
+                                                    <LucideIcon name="check-circle" className="w-6 h-6" /> FINALIZAR
                                                 </button>
                                                 <button onClick={cancelSaleAndClear} class="w-full py-4 bg-red-50 text-red-600 rounded-2xl font-black text-lg hover:bg-red-100 transition-all active:scale-95 border border-red-200">
-                                                    Não, Cancelar Operação
+                                                    CANCELAR
                                                 </button>
                                                 <button onClick={() => setIsManualConfirmOpen(false)} class="text-stone-400 font-bold text-xs hover:text-stone-600 py-2">Voltar para Aguardo</button>
                                             </div>
@@ -3055,19 +3046,19 @@ Qualquer dúvida, estamos à disposição!`;
 
             if (!currentUser) {
                 const params = new URLSearchParams(window.location.search);
-                const isTap = params.get('tap_result') || params.get('ip_paid');
-                console.warn('[AUTH] currentUser vazio.', isTap ? 'Redirecionamento InfinitePay detectado.' : 'Acesso comum.');
-                if (isTap) {
-                    return (
-                        <div class="flex items-center justify-center h-screen bg-stone-50 w-full">
-                            <div class="text-center p-8 bg-white rounded-3xl shadow-xl border border-stone-100">
-                                <div class="w-12 h-12 border-4 border-moriah-brown border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                                <h2 class="text-xl font-bold text-stone-800 mb-2">Restaurando Sessão</h2>
-                                <p class="text-stone-500 text-sm">Validando seu pagamento com a InfinitePay...</p>
-                                <p class="text-[10px] text-stone-300 mt-4">Por favor, aguarde alguns segundos.</p>
-                            </div>
-                        </div>
-                    );
+                const isTap = params.get('tap_result') || params.get('ip_paid') || params.get('ip_cancelled') || params.get('sale_id');
+                const pendingStr = localStorage.getItem('ip_pending');
+                
+                // Se estamos retornando de um pagamento ou temos algo pendente, mostramos a tela de retorno
+                // em vez do login, mesmo que a sessão JWT tenha expirado.
+                if (isTap || pendingStr) {
+                    const pendingData = pendingStr ? JSON.parse(pendingStr) : null;
+                    const saleId = params.get('ip_paid') || params.get('ip_cancelled') || params.get('sale_id') || pendingData?.sale_id;
+                    return <InfinitePayReturnView 
+                        id={saleId} 
+                        isApproved={!!params.get('ip_paid')} 
+                        isPendingRecovery={!isTap && !!pendingStr}
+                    />;
                 }
                 return renderView('login');
             }

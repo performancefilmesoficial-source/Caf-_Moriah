@@ -12,48 +12,15 @@ const INFINITEPAY_HANDLE = process.env.INFINITEPAY_HANDLE || 'cafemoriah';
 const PDV_BASE_URL = process.env.PDV_BASE_URL || 'https://app.cafemoriah.com.br';
 
 // POST /api/pdv/cart/deduct — reserva estoque ao adicionar item ao carrinho
-router.post('/cart/deduct', authenticateJWT, async (req, res, next) => {
-    const { product_id, quantity, grind } = req.body;
-    if (!product_id || !quantity || quantity < 1) return res.status(400).json({ error: 'Dados inválidos.' });
-    try {
-        const db = getDb();
-        const [rows] = await db.query('SELECT stock, stock_moido, stock_grao, name FROM products WHERE id = ?', [product_id]);
-        if (!rows.length) return res.status(404).json({ error: 'Produto não encontrado.' });
-
-        let available = rows[0].stock;
-        if (grind === 'Pó/Moído') available = rows[0].stock_moido || 0;
-        else if (grind === 'Em Grão') available = rows[0].stock_grao || 0;
-
-        if (available < quantity) return res.status(400).json({ error: `Estoque insuficiente: ${rows[0].name}` });
-
-        if (grind === 'Pó/Moído') {
-            await db.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [quantity, product_id]);
-        } else if (grind === 'Em Grão') {
-            await db.run('UPDATE products SET stock_grao = stock_grao - ? WHERE id = ?', [quantity, product_id]);
-        } else {
-            await db.run('UPDATE products SET stock = stock - ? WHERE id = ?', [quantity, product_id]);
-        }
-        broadcastStockUpdate([{ product_id, quantity, grind }]);
-        res.json({ success: true });
-    } catch (err) { next(err); }
+// POST /api/pdv/cart/deduct — (DESATIVADO) Agora a baixa ocorre apenas no FINALIZAR
+router.post('/cart/deduct', authenticateJWT, async (req, res) => {
+    res.json({ success: true, message: 'Reserva antecipada desativada.' });
 });
 
 // POST /api/pdv/cart/restore — devolve estoque ao remover item do carrinho
-router.post('/cart/restore', authenticateJWT, async (req, res, next) => {
-    const { product_id, quantity, grind } = req.body;
-    if (!product_id || !quantity || quantity < 1) return res.status(400).json({ error: 'Dados inválidos.' });
-    try {
-        const db = getDb();
-        if (grind === 'Pó/Moído') {
-            await db.run('UPDATE products SET stock_moido = stock_moido + ? WHERE id = ?', [quantity, product_id]);
-        } else if (grind === 'Em Grão') {
-            await db.run('UPDATE products SET stock_grao = stock_grao + ? WHERE id = ?', [quantity, product_id]);
-        } else {
-            await db.run('UPDATE products SET stock = stock + ? WHERE id = ?', [quantity, product_id]);
-        }
-        broadcastStockUpdate([{ product_id, quantity: -quantity, grind }]);
-        res.json({ success: true });
-    } catch (err) { next(err); }
+// POST /api/pdv/cart/restore — (DESATIVADO)
+router.post('/cart/restore', authenticateJWT, async (req, res) => {
+    res.json({ success: true });
 });
 
 // POST /api/pdv/charge  (cobrança Asaas presencial)
@@ -107,22 +74,8 @@ router.post('/infinitepay/charge', authenticateJWT, async (req, res, next) => {
     try {
         const db = getDb();
 
-        // Criar venda pendente no banco
-        const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
-        const saleId = await db.transaction(async (tx) => {
-            const result = await tx.run(
-                'INSERT INTO sales (total, method, origin, status, customer_name) VALUES (?, ?, ?, ?, ?)',
-                [parseFloat(total), methodLabel, 'Físico', 'Aguardando Pagamento', 'Cliente PDV']
-            );
-            const sId = result[0].insertId;
-            for (const item of items) {
-                await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price, grind) VALUES (?, ?, ?, ?, ?, ?)',
-                    [sId, item.id, item.name, item.quantity, item.price, item.grind || null]);
-                // Estoque já foi reservado em /cart/deduct ao adicionar ao carrinho
-            }
-            return sId;
-        });
-        const orderNsu = `moriah-pdv-${saleId}`;
+        // Apenas gera um orderNsu baseado no tempo se não for criar a venda agora
+        const orderNsu = `temp-${Date.now()}`;
 
         // Criar cobrança no InfinitePay
         let checkoutUrl = `https://checkout.infinitepay.io/${INFINITEPAY_HANDLE}`;
@@ -135,7 +88,7 @@ router.post('/infinitepay/charge', authenticateJWT, async (req, res, next) => {
                     quantity: i.quantity,
                     description: `${i.name}${i.grind ? ' (' + i.grind + ')' : ''}`.substring(0, 60)
                 })),
-                redirect_url: `${PDV_BASE_URL}/?ip_paid=${saleId}`,
+                redirect_url: `${PDV_BASE_URL}/?sale_id=${orderNsu}`,
                 webhook_url: `${PDV_BASE_URL}/api/webhooks/infinitepay`
             }, { headers: { 'Content-Type': 'application/json' }, timeout: 8000 });
 
@@ -143,19 +96,17 @@ router.post('/infinitepay/charge', authenticateJWT, async (req, res, next) => {
                 || ipRes.data?.url
                 || ipRes.data?.link
                 || `https://checkout.infinitepay.io/${INFINITEPAY_HANDLE}`;
-
-            await db.run('UPDATE sales SET payment_id = ? WHERE id = ?', [orderNsu, saleId]);
         } catch (ipErr) {
             console.error('[INFINITEPAY] Falha ao criar cobrança:', ipErr.response?.data || ipErr.message);
         }
 
-        res.json({ success: true, sale_id: saleId, checkout_url: checkoutUrl });
+        res.json({ success: true, order_nsu: orderNsu, checkout_url: checkoutUrl });
 
     } catch (err) { next(err); }
 });
 
-// GET /api/pdv/infinitepay/status/:sale_id
-router.get('/infinitepay/status/:sale_id', authenticateJWT, async (req, res, next) => {
+// GET /api/pdv/infinitepay/status/:sale_id (Público para facilitar retorno de pagamento sem sessão)
+router.get('/infinitepay/status/:sale_id', async (req, res, next) => {
     try {
         const db = getDb();
         const [rows] = await db.query('SELECT status, method FROM sales WHERE id = ?', [req.params.sale_id]);
@@ -164,14 +115,49 @@ router.get('/infinitepay/status/:sale_id', authenticateJWT, async (req, res, nex
     } catch (err) { next(err); }
 });
 
-// PUT /api/pdv/sales/:id/confirm
-router.put('/sales/:id/confirm', authenticateJWT, async (req, res, next) => {
-    const { method } = req.body;
+// POST /api/pdv/finalize-sale — O ÚNICO LUGAR ONDE A VENDA É REGISTRADA E O ESTOQUE É BAIXADO
+router.post('/finalize-sale', authenticateJWT, async (req, res, next) => {
+    const { total, items, method, customerName } = req.body;
+    if (!items || !items.length) return res.status(400).json({ error: 'Carrinho vazio.' });
+
     try {
         const db = getDb();
-        await db.run('UPDATE sales SET status = ?, method = ? WHERE id = ?', ['Pago', method || 'InfinitePay', req.params.id]);
-        res.json({ success: true });
-    } catch (err) { next(err); }
+        const saleId = await db.transaction(async (tx) => {
+            // 1. REGISTRAR A VENDA COMO CONCLUÍDA
+            const result = await tx.run(
+                'INSERT INTO sales (total, method, origin, status, customer_name) VALUES (?, ?, ?, ?, ?)',
+                [parseFloat(total), method || 'Cartão', 'Físico', 'Concluído', customerName || 'Cliente PDV']
+            );
+            const sId = result[0].insertId;
+
+            // 2. DAR A BAIXA NO ESTOQUE PARA CADA ITEM
+            const stockChanges = [];
+            for (const item of items) {
+                // Registrar itens da venda
+                await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price, grind) VALUES (?, ?, ?, ?, ?, ?)',
+                    [sId, item.id, item.name, item.quantity, item.price, item.grind || null]);
+                
+                // Baixa no estoque
+                if (item.grind === 'Pó/Moído') {
+                    await tx.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [item.quantity, item.id]);
+                } else if (item.grind === 'Em Grão') {
+                    await tx.run('UPDATE products SET stock_grao = stock_grao - ? WHERE id = ?', [item.quantity, item.id]);
+                } else {
+                    await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
+                }
+                stockChanges.push({ product_id: item.id, quantity: item.quantity, grind: item.grind });
+            }
+            
+            // Notificar sincronização de estoque
+            broadcastStockUpdate(stockChanges);
+            return sId;
+        });
+
+        res.json({ success: true, sale_id: saleId });
+    } catch (err) {
+        console.error('[FINALIZE SALE] Falha crítica:', err.message);
+        res.status(500).json({ error: 'Erro ao registrar venda e atualizar estoque.' });
+    }
 });
 
 // PUT /api/pdv/sales/:id/cancel  — cancela venda
