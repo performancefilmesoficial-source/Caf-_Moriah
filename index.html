@@ -919,7 +919,9 @@
                     } catch (_) {}
                 }
 
-                // Também processa localmente (caso esta seja a aba original ou única aba)
+                // Processa localmente — SEMPRE, independente de ipWaiting.
+                // O InfinitePay pode recarregar esta mesma aba (state zerado), ou abrir nova aba.
+                // Em ambos os casos queremos tratar o resultado.
                 const timer = setTimeout(() => {
                     const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
 
@@ -927,28 +929,18 @@
                         apiFetch(`/api/pdv/infinitepay/status/${targetId}`)
                             .then(r => r.ok ? r.json() : null)
                             .then(data => {
-                                if (data?.paid) {
-                                    // Aba original: polling pode já ter tratado; evita duplicação verificando ipWaiting
-                                    if (!ipWaitingRef.current) return; // SSE/BroadcastChannel já tratou
-                                    clearInterval(ipPollingRef.current);
-                                    setIpWaiting(null);
-                                    setIsManualConfirmOpen(false);
-                                    setCart([]);
-                                    setDiscount(0);
-                                    if (pending) setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
-                                    setIsSuccessModalOpen(true);
-                                    localStorage.removeItem('ip_pending');
-                                } else if (tapResult && pending) {
-                                    // Fallback: pagamento não confirmado ainda — abre confirmação manual
-                                    if (!ipWaitingRef.current) return;
-                                    setIpWaiting({ sale_id: parseInt(targetId), total: pending.total ?? 0, method: pending.method ?? 'Cartão', checkout_url: null });
-                                    setIsManualConfirmOpen(true);
-                                    localStorage.removeItem('ip_pending');
-                                }
+                                if (!data?.paid) return;
+                                clearInterval(ipPollingRef.current);
+                                setIpWaiting(null);
+                                setIsManualConfirmOpen(false);
+                                setCart([]);
+                                setDiscount(0);
+                                if (pending) setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
+                                setIsSuccessModalOpen(true);
+                                localStorage.removeItem('ip_pending');
                             })
                             .catch(err => console.error("[PDV] Erro ao verificar status:", err));
                     } else if (isCancelled) {
-                        if (!ipWaitingRef.current) return; // já tratado por SSE/BroadcastChannel
                         clearInterval(ipPollingRef.current);
                         setIpWaiting(null);
                         setIsManualConfirmOpen(false);
@@ -960,6 +952,59 @@
 
                 return () => clearTimeout(timer);
             }, [currentUser]);
+
+            // visibilitychange: detecta quando o usuário volta para o browser após sair para o InfinitePay.
+            // Se o InfinitePay não chamar a result_url automaticamente, este evento pega o retorno manual.
+            // Também cobre o caso em que o polling foi pausado pelo OS enquanto o app nativo estava ativo.
+            useEffect(() => {
+                const onVisible = async () => {
+                    if (document.visibilityState !== 'visible') return;
+                    // Verifica tanto ipWaitingRef (aba original viva) quanto ip_pending (aba recarregada)
+                    const waiting = ipWaitingRef.current;
+                    const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
+                    const saleId = waiting?.sale_id || pending?.sale_id;
+                    if (!saleId) return;
+
+                    try {
+                        const token = localStorage.getItem('moriah_jwt');
+                        const r = await window.fetch(`/api/pdv/infinitepay/status/${saleId}`, {
+                            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                        });
+                        if (!r.ok) return;
+                        const data = await r.json();
+
+                        if (data.paid) {
+                            clearInterval(ipPollingRef.current);
+                            setIpWaiting(null);
+                            setIsManualConfirmOpen(false);
+                            setCart([]);
+                            setDiscount(0);
+                            if (pending || waiting) {
+                                const src = pending || waiting;
+                                setLastSale({ id: saleId, total: src.total, method: src.method, items: src.cart || cartRef.current });
+                            }
+                            addNotification('Venda Confirmada', 'InfinitePay: pagamento aprovado!', 'success');
+                            setIsSuccessModalOpen(true);
+                            localStorage.removeItem('ip_pending');
+                        } else if (data.status === 'Cancelado') {
+                            clearInterval(ipPollingRef.current);
+                            setIpWaiting(null);
+                            setIsManualConfirmOpen(false);
+                            localStorage.removeItem('ip_pending');
+                            addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
+                            setIsCheckoutOpen(true);
+                        }
+                        // Se ainda "Aguardando Pagamento", não faz nada — usuário pode ter voltado antes de terminar
+                    } catch (_) {}
+                };
+
+                document.addEventListener('visibilitychange', onVisible);
+                window.addEventListener('focus', onVisible);
+                return () => {
+                    document.removeEventListener('visibilitychange', onVisible);
+                    window.removeEventListener('focus', onVisible);
+                };
+            }, []);
 
             // Busca vendas do banco de dados ao abrir a aba de vendas
             // Auto-refresh a cada 30s para capturar pedidos online automaticamente
