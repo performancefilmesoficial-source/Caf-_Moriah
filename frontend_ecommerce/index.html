@@ -526,7 +526,11 @@
                             </div>
                             <div className="flex flex-col justify-center">
                                 {siteSettings.about_title && (
-                                    <h2 className="font-sans text-4xl md:text-5xl lg:text-6xl font-bold text-moriah-brown mb-8 leading-tight">
+                                    <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-8 leading-tight"
+                                        style={{
+                                            fontFamily: FONT_MAP[siteSettings.about_font_family] || 'system-ui, sans-serif',
+                                            color: siteSettings.about_title_color || '#5d4037'
+                                        }}>
                                         {siteSettings.about_title}
                                     </h2>
                                 )}

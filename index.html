@@ -732,6 +732,7 @@
                 hero_banners: '[]',
                 hero_font_family: 'sans', hero_title_size: '5', hero_text_color: '#ffffff',
                 about_title: '', about_text_1: '', about_text_2: '', about_image: '',
+                about_font_family: 'sans', about_title_color: '#5d4037',
                 site_title: '', logo_url: '', favicon_url: '',
                 whatsapp_number: '', instagram_url: '', contact_email: '',
                 cnpj: '', address: '', footer_text: ''
@@ -2522,6 +2523,60 @@ Qualquer dúvida, estamos à disposição!`;
                                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
                                         <h3 class="font-bold text-lg mb-4 text-moriah-brown">Seção: Nossa História</h3>
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                            {/* ── PRÉVIA NOSSA HISTÓRIA ── */}
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-2 flex items-center gap-1.5 block">
+                                                    <LucideIcon name="eye" className="w-3.5 h-3.5" /> Prévia em Tempo Real
+                                                </label>
+                                                <div class="relative rounded-2xl overflow-hidden bg-stone-100 border border-stone-200" style={{ minHeight: '160px' }}>
+                                                    {(() => {
+                                                        const fontOpt = FONT_OPTIONS.find(f => f.value === (siteSettings.about_font_family || 'sans')) || FONT_OPTIONS[0];
+                                                        return (
+                                                            <div class="flex gap-0 h-full" style={{ minHeight: '160px' }}>
+                                                                {/* Imagem lateral */}
+                                                                <div class="w-2/5 flex-shrink-0 relative bg-stone-300 overflow-hidden rounded-l-2xl">
+                                                                    {siteSettings.about_image
+                                                                        ? <img src={siteSettings.about_image} class={`w-full h-full object-cover ${siteSettings.about_image_align || 'object-center'}`} alt="" style={{ minHeight: '160px' }} />
+                                                                        : <div class="w-full h-full flex items-center justify-center text-stone-400" style={{ minHeight: '160px' }}><LucideIcon name="image" className="w-8 h-8" /></div>
+                                                                    }
+                                                                </div>
+                                                                {/* Texto */}
+                                                                <div class="flex-1 p-4 flex flex-col justify-center bg-stone-50">
+                                                                    {siteSettings.about_title && (
+                                                                        <p class="font-bold leading-tight mb-2" style={{ fontFamily: fontOpt.style, fontSize: '0.95rem', color: siteSettings.about_title_color || '#5d4037' }}>
+                                                                            {siteSettings.about_title}
+                                                                        </p>
+                                                                    )}
+                                                                    {siteSettings.about_text_1 && (
+                                                                        <p class="text-stone-500 leading-snug" style={{ fontSize: '0.55rem' }}>
+                                                                            {siteSettings.about_text_1.slice(0, 120)}{siteSettings.about_text_1.length > 120 ? '...' : ''}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                                <div class="absolute top-2 right-2 bg-black/30 text-white text-[9px] px-2 py-0.5 rounded-full font-bold tracking-wide pointer-events-none">PRÉVIA</div>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            </div>
+
+                                            {/* Fonte do título */}
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Fonte do Título</label>
+                                                <select value={siteSettings.about_font_family || 'sans'} onChange={e => setSiteSettings({ ...siteSettings, about_font_family: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl text-sm">
+                                                    {FONT_OPTIONS.map(f => <option key={f.value} value={f.value} style={{ fontFamily: f.style }}>{f.label}</option>)}
+                                                </select>
+                                            </div>
+                                            {/* Cor do título */}
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Cor do Título</label>
+                                                <div class="flex gap-2 items-center">
+                                                    <input type="color" value={siteSettings.about_title_color || '#5d4037'} onChange={e => setSiteSettings({ ...siteSettings, about_title_color: e.target.value })} class="h-10 w-14 rounded-xl cursor-pointer border border-stone-200 p-0.5 bg-stone-50" />
+                                                    <input value={siteSettings.about_title_color || '#5d4037'} onChange={e => setSiteSettings({ ...siteSettings, about_title_color: e.target.value })} class="flex-1 px-4 py-2 bg-stone-50 border rounded-xl text-sm font-mono" placeholder="#5d4037" />
+                                                </div>
+                                            </div>
+
                                             <div class="md:col-span-2">
                                                 <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Título da História</label>
                                                 <input value={siteSettings.about_title || ''} onChange={e => setSiteSettings({ ...siteSettings, about_title: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" />
@@ -2544,7 +2599,7 @@ Qualquer dúvida, estamos à disposição!`;
                                                 <p class="text-[10px] text-stone-400 mt-1">Previne cortes ruins em rostos no celular.</p>
                                             </div>
                                             <div class="md:col-span-2">
-                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Link da Imagem Ilustrativa</label>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Imagem Ilustrativa</label>
                                                 <div class="flex flex-col gap-2">
                                                     <input value={siteSettings.about_image || ''} onChange={e => setSiteSettings({ ...siteSettings, about_image: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="Link externo da foto (opcional)" />
                                                     <div class="relative w-full">
@@ -2555,7 +2610,6 @@ Qualquer dúvida, estamos à disposição!`;
                                                         </div>
                                                     </div>
                                                 </div>
-                                                {siteSettings.about_image && <img src={(siteSettings.about_image || '').startsWith('/') ? `${siteSettings.about_image}` : siteSettings.about_image} class="mt-2 text-stone-200 h-20 w-auto rounded border" alt="preview da historia" />}
                                             </div>
                                         </div>
                                     </div>

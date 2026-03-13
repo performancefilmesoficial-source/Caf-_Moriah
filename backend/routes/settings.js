@@ -39,6 +39,7 @@ router.put('/', authenticateJWT, upload.fields([
     const {
         hero_title, hero_text, hero_video_opacity, hero_text_align,
         hero_font_family, hero_title_size, hero_text_color,
+        about_font_family, about_title_color,
         about_title, about_text_1, about_text_2, about_image_align,
         site_title, whatsapp_number, instagram_url, contact_email,
         cnpj, address, footer_text
@@ -116,8 +117,12 @@ router.put('/', authenticateJWT, upload.fields([
         // Colunas tipográficas (adicionadas na migration — VARCHAR permite DEFAULT no MySQL 5.7)
         try {
             await db.query(
-                `UPDATE site_settings SET hero_font_family=?, hero_title_size=?, hero_text_color=? WHERE id=?`,
-                [hero_font_family || 'sans', hero_title_size || '5', hero_text_color || '#ffffff', settingsId]
+                `UPDATE site_settings SET
+                    hero_font_family=?, hero_title_size=?, hero_text_color=?,
+                    about_font_family=?, about_title_color=?
+                 WHERE id=?`,
+                [hero_font_family || 'sans', hero_title_size || '5', hero_text_color || '#ffffff',
+                 about_font_family || 'sans', about_title_color || '#5d4037', settingsId]
             );
         } catch (typoErr) {
             console.warn('[SETTINGS] Colunas tipográficas indisponíveis:', typoErr.message);
