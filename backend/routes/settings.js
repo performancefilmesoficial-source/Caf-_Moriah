@@ -3,25 +3,15 @@ const express = require('express');
 const multer = require('multer');
 const { getDb } = require('../config/database');
 const { authenticateJWT } = require('../middleware/auth');
-const fs = require('fs');
-const path = require('path');
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const dir = path.join(__dirname, '../../uploads/site');
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-    }
-});
+// memoryStorage → Base64 no banco (persiste entre deploys no Docker)
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+function toBase64(file) {
+    return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+}
 
 // GET /api/site-settings  (público — e-commerce lê aqui)
 router.get('/', async (req, res, next) => {
@@ -58,19 +48,19 @@ router.put('/', authenticateJWT, upload.fields([
 
     if (req.files) {
         if (req.files['hero_video_file']?.[0]) {
-            hero_video = `/uploads/site/${req.files['hero_video_file'][0].filename}`;
+            hero_video = toBase64(req.files['hero_video_file'][0]);
         }
         if (req.files['about_image_file']?.[0]) {
-            about_image = `/uploads/site/${req.files['about_image_file'][0].filename}`;
+            about_image = toBase64(req.files['about_image_file'][0]);
         }
         if (req.files['logo_file']?.[0]) {
-            logo_url = `/uploads/site/${req.files['logo_file'][0].filename}`;
+            logo_url = toBase64(req.files['logo_file'][0]);
         }
         if (req.files['favicon_file']?.[0]) {
-            favicon_url = `/uploads/site/${req.files['favicon_file'][0].filename}`;
+            favicon_url = toBase64(req.files['favicon_file'][0]);
         }
         if (req.files['hero_banners_files']) {
-            const newBanners = req.files['hero_banners_files'].map(f => `/uploads/site/${f.filename}`);
+            const newBanners = req.files['hero_banners_files'].map(f => toBase64(f));
             bannersArray = [...bannersArray, ...newBanners];
         }
     }
