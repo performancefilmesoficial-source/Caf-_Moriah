@@ -924,16 +924,23 @@
                 return { revenue, lowStockCount: lowStock.length };
             }, [sales, products]);
 
-            const addToCart = (product, grind = null) => {
-                let available = product.stock;
-                if (grind === 'moido') available = product.stock_moido || 0;
-                else if (grind === 'grao') available = product.stock_grao || 0;
+            const cartApiCall = async (endpoint, body) => {
+                const token = localStorage.getItem('moriah_jwt');
+                return window.fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+                    body: JSON.stringify(body)
+                });
+            };
 
-                if (available <= 0) {
-                    alert('Estoque insuficiente para esta variação.');
+            const addToCart = async (product, grind = null) => {
+                const grindLabel = grind === 'moido' ? 'Pó/Moído' : grind === 'grao' ? 'Em Grão' : null;
+                const res = await cartApiCall('/api/pdv/cart/deduct', { product_id: product.id, quantity: 1, grind: grindLabel });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.error || 'Estoque insuficiente.');
                     return;
                 }
-
                 const price = grind === 'moido' && parseFloat(product.price_moido) > 0
                     ? parseFloat(product.price_moido)
                     : parseFloat(product.price);
@@ -943,9 +950,6 @@
                     : grind === 'grao'
                         ? `${product.name} (Grão)`
                         : product.name;
-
-                const grindLabel = grind === 'moido' ? 'Pó/Moído' : grind === 'grao' ? 'Em Grão' : null;
-
                 setCart(curr => {
                     const existing = curr.find(i => i.cartKey === cartKey);
                     if (existing) return curr.map(i => i.cartKey === cartKey ? { ...i, quantity: i.quantity + 1 } : i);
@@ -953,15 +957,34 @@
                 });
             };
 
-            const removeFromCart = (cartKey) => setCart(curr => curr.filter(i => i.cartKey !== cartKey));
-            const updateCartQuantity = (cartKey, delta) => {
-                setCart(curr => curr.map(i => {
-                    if (i.cartKey === cartKey) {
-                        const newQty = Math.max(1, i.quantity + delta);
-                        return { ...i, quantity: newQty };
-                    }
-                    return i;
-                }));
+            const removeFromCart = async (cartKey) => {
+                const item = cart.find(i => i.cartKey === cartKey);
+                if (!item) return;
+                await cartApiCall('/api/pdv/cart/restore', { product_id: item.id, quantity: item.quantity, grind: item.grind }).catch(() => {});
+                setCart(curr => curr.filter(i => i.cartKey !== cartKey));
+            };
+
+            const updateCartQuantity = async (cartKey, delta) => {
+                const item = cart.find(i => i.cartKey === cartKey);
+                if (!item) return;
+                const newQty = Math.max(1, item.quantity + delta);
+                if (newQty === item.quantity) return;
+                const endpoint = delta > 0 ? '/api/pdv/cart/deduct' : '/api/pdv/cart/restore';
+                const res = await cartApiCall(endpoint, { product_id: item.id, quantity: Math.abs(delta), grind: item.grind });
+                if (!res.ok && delta > 0) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.error || 'Estoque insuficiente.');
+                    return;
+                }
+                setCart(curr => curr.map(i => i.cartKey === cartKey ? { ...i, quantity: newQty } : i));
+            };
+
+            const emptyCart = async () => {
+                if (!cart.length) return;
+                for (const item of cart) {
+                    await cartApiCall('/api/pdv/cart/restore', { product_id: item.id, quantity: item.quantity, grind: item.grind }).catch(() => {});
+                }
+                setCart([]);
             };
 
             const generatePixPayload = (amount) => {
@@ -1132,12 +1155,13 @@
                                 addNotification('Venda Confirmada', `InfinitePay: R$ ${total.toFixed(2)} recebido.`, 'success');
                                 setIsSuccessModalOpen(true);
                             } else if (data.status === 'Cancelado') {
-                                // Venda cancelada (pelo X no InfinitePay ou pelo usuário no PDV)
+                                // Venda cancelada (pelo X no InfinitePay)
                                 clearInterval(ipPollingRef.current);
                                 setIpWaiting(null);
                                 setIsManualConfirmOpen(false);
                                 localStorage.removeItem('ip_pending');
-                                addNotification('Venda Cancelada', 'Pagamento cancelado. Estoque restaurado.', 'warning');
+                                addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
+                                setIsCheckoutOpen(true);
                             }
                         } catch (_) { }
                     }, 3000);
@@ -1167,22 +1191,23 @@
                 if (!pending?.sale_id) return;
 
                 try {
+                    // noStock=true: itens ainda estão no carrinho, estoque já está reservado
                     // Usa window.fetch diretamente — evita o auto-logout do apiFetch
-                    // caso o token esteja expirado (403 não deve derrubar a sessão aqui)
                     const token = localStorage.getItem('moriah_jwt');
-                    const res = await window.fetch(`/api/pdv/sales/${pending.sale_id}/cancel`, {
+                    const res = await window.fetch(`/api/pdv/sales/${pending.sale_id}/cancel?noStock=true`, {
                         method: 'PUT',
                         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
                     });
                     if (res.ok) {
-                        addNotification('Venda Cancelada', `Venda #${pending.sale_id} cancelada. Estoque restaurado.`, 'warning');
+                        addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
                     } else {
                         console.warn('[PDV] Cancel status', res.status);
-                        addNotification('Atenção', `Venda #${pending.sale_id} não foi cancelada automaticamente. Verifique o relatório.`, 'warning');
                     }
                 } catch (err) {
                     console.error('[PDV] Erro ao cancelar venda:', err);
                 }
+                // Re-abre checkout — carrinho continua com os itens
+                setIsCheckoutOpen(true);
             };
 
             const confirmManualPayment = async () => {
@@ -1620,7 +1645,7 @@ Qualquer dúvida, estamos à disposição!`;
                                         <button onClick={() => setIsMobileCartOpen(false)} class="lg:hidden p-2 -ml-2 text-stone-400 hover:text-stone-600"><LucideIcon name="chevron-down" className="w-6 h-6" /></button>
                                         <h3 class="font-bold text-xl">Carrinho</h3>
                                     </div>
-                                    <button onClick={() => setCart([])} class="p-2 text-stone-400 hover:text-red-500 transition-colors"><LucideIcon name="trash-2" className="w-5 h-5" /></button>
+                                    <button onClick={emptyCart} class="p-2 text-stone-400 hover:text-red-500 transition-colors"><LucideIcon name="trash-2" className="w-5 h-5" /></button>
                                 </div>
                                 <div class="flex-1 overflow-y-auto p-6 space-y-4">
                                     {cart.map(item => (

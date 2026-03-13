@@ -2,7 +2,6 @@
 const express = require('express');
 const { getDb } = require('../config/database');
 const { authenticateJWT } = require('../middleware/auth');
-const { broadcastStockUpdate } = require('../services/sseService');
 
 const router = express.Router();
 
@@ -49,28 +48,13 @@ router.post('/', authenticateJWT, async (req, res, next) => {
             for (const item of items) {
                 const productId = parseInt(String(item.id).split('-')[0]);
                 await tx.run(
-                    'INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
-                    [sId, productId, item.name, item.quantity, item.price]
+                    'INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price, grind) VALUES (?, ?, ?, ?, ?, ?)',
+                    [sId, productId, item.name, item.quantity, item.price, item.grind || null]
                 );
-
-                // Lógica de decremento de estoque específico
-                if (item.grind === 'Pó/Moído') {
-                    await tx.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [item.quantity, productId]);
-                } else if (item.grind === 'Em Grão') {
-                    await tx.run('UPDATE products SET stock_grao = stock_grao - ? WHERE id = ?', [item.quantity, productId]);
-                } else {
-                    await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, productId]);
-                }
+                // Estoque já foi reservado em /cart/deduct ao adicionar ao carrinho
             }
             return sId;
         });
-
-        // Notifica PDV e e-commerce conectados sobre mudança de estoque
-        broadcastStockUpdate(items.map(i => ({
-            product_id: parseInt(String(i.id).split('-')[0]),
-            quantity: i.quantity,
-            grind: i.grind
-        })));
 
         res.status(201).json({ id: saleId, message: 'Venda finalizada com sucesso!' });
     } catch (err) { next(err); }

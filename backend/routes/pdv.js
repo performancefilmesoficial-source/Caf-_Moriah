@@ -11,6 +11,51 @@ const ASAAS_URL = 'https://api.asaas.com/v3';
 const INFINITEPAY_HANDLE = process.env.INFINITEPAY_HANDLE || 'cafemoriah';
 const PDV_BASE_URL = process.env.PDV_BASE_URL || 'https://app.cafemoriah.com.br';
 
+// POST /api/pdv/cart/deduct — reserva estoque ao adicionar item ao carrinho
+router.post('/cart/deduct', authenticateJWT, async (req, res, next) => {
+    const { product_id, quantity, grind } = req.body;
+    if (!product_id || !quantity || quantity < 1) return res.status(400).json({ error: 'Dados inválidos.' });
+    try {
+        const db = getDb();
+        const [rows] = await db.query('SELECT stock, stock_moido, stock_grao, name FROM products WHERE id = ?', [product_id]);
+        if (!rows.length) return res.status(404).json({ error: 'Produto não encontrado.' });
+
+        let available = rows[0].stock;
+        if (grind === 'Pó/Moído') available = rows[0].stock_moido || 0;
+        else if (grind === 'Em Grão') available = rows[0].stock_grao || 0;
+
+        if (available < quantity) return res.status(400).json({ error: `Estoque insuficiente: ${rows[0].name}` });
+
+        if (grind === 'Pó/Moído') {
+            await db.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [quantity, product_id]);
+        } else if (grind === 'Em Grão') {
+            await db.run('UPDATE products SET stock_grao = stock_grao - ? WHERE id = ?', [quantity, product_id]);
+        } else {
+            await db.run('UPDATE products SET stock = stock - ? WHERE id = ?', [quantity, product_id]);
+        }
+        broadcastStockUpdate([{ product_id, quantity, grind }]);
+        res.json({ success: true });
+    } catch (err) { next(err); }
+});
+
+// POST /api/pdv/cart/restore — devolve estoque ao remover item do carrinho
+router.post('/cart/restore', authenticateJWT, async (req, res, next) => {
+    const { product_id, quantity, grind } = req.body;
+    if (!product_id || !quantity || quantity < 1) return res.status(400).json({ error: 'Dados inválidos.' });
+    try {
+        const db = getDb();
+        if (grind === 'Pó/Moído') {
+            await db.run('UPDATE products SET stock_moido = stock_moido + ? WHERE id = ?', [quantity, product_id]);
+        } else if (grind === 'Em Grão') {
+            await db.run('UPDATE products SET stock_grao = stock_grao + ? WHERE id = ?', [quantity, product_id]);
+        } else {
+            await db.run('UPDATE products SET stock = stock + ? WHERE id = ?', [quantity, product_id]);
+        }
+        broadcastStockUpdate([{ product_id, quantity: -quantity, grind }]);
+        res.json({ success: true });
+    } catch (err) { next(err); }
+});
+
 // POST /api/pdv/charge  (cobrança Asaas presencial)
 router.post('/charge', authenticateJWT, async (req, res, next) => {
     if (!ASAAS_API_KEY)
@@ -62,19 +107,6 @@ router.post('/infinitepay/charge', authenticateJWT, async (req, res, next) => {
     try {
         const db = getDb();
 
-        // Validar estoque
-        for (const item of items) {
-            const [rows] = await db.query('SELECT stock, stock_moido, stock_grao, name FROM products WHERE id = ?', [item.id]);
-            if (!rows.length) return res.status(400).json({ error: 'Produto não encontrado: ' + item.id });
-
-            let available = rows[0].stock;
-            if (item.grind === 'Pó/Moído') available = rows[0].stock_moido;
-            else if (item.grind === 'Em Grão') available = rows[0].stock_grao;
-
-            if (available < item.quantity)
-                return res.status(400).json({ error: `Estoque insuficiente (${item.grind || 'Geral'}): ${rows[0].name}` });
-        }
-
         // Criar venda pendente no banco
         const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
         const saleId = await db.transaction(async (tx) => {
@@ -86,18 +118,10 @@ router.post('/infinitepay/charge', authenticateJWT, async (req, res, next) => {
             for (const item of items) {
                 await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price, grind) VALUES (?, ?, ?, ?, ?, ?)',
                     [sId, item.id, item.name, item.quantity, item.price, item.grind || null]);
-
-                if (item.grind === 'Pó/Moído') {
-                    await tx.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [item.quantity, item.id]);
-                } else if (item.grind === 'Em Grão') {
-                    await tx.run('UPDATE products SET stock_grao = stock_grao - ? WHERE id = ?', [item.quantity, item.id]);
-                } else {
-                    await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
-                }
+                // Estoque já foi reservado em /cart/deduct ao adicionar ao carrinho
             }
             return sId;
         });
-        // ... (rest of charge route logic remains and NSU logic remains)
         const orderNsu = `moriah-pdv-${saleId}`;
 
         // Criar cobrança no InfinitePay
@@ -125,7 +149,6 @@ router.post('/infinitepay/charge', authenticateJWT, async (req, res, next) => {
             console.error('[INFINITEPAY] Falha ao criar cobrança:', ipErr.response?.data || ipErr.message);
         }
 
-        broadcastStockUpdate(items.map(i => ({ product_id: i.id, quantity: i.quantity, grind: i.grind })));
         res.json({ success: true, sale_id: saleId, checkout_url: checkoutUrl });
 
     } catch (err) { next(err); }
@@ -151,30 +174,36 @@ router.put('/sales/:id/confirm', authenticateJWT, async (req, res, next) => {
     } catch (err) { next(err); }
 });
 
-// PUT /api/pdv/sales/:id/cancel  — cancela venda e restaura estoque
+// PUT /api/pdv/sales/:id/cancel  — cancela venda
+// ?noStock=true → não restaura estoque (itens ainda estão no carrinho)
 router.put('/sales/:id/cancel', authenticateJWT, async (req, res, next) => {
+    const noStock = req.query.noStock === 'true';
     try {
         const db = getDb();
         const [saleRows] = await db.query('SELECT status FROM sales WHERE id = ?', [req.params.id]);
         if (!saleRows.length) return res.status(404).json({ error: 'Venda não encontrada.' });
         if (saleRows[0].status === 'Cancelado') return res.json({ success: true, message: 'Já cancelada.' });
 
-        const [items] = await db.query('SELECT product_id, quantity, grind FROM sale_items WHERE sale_id = ?', [req.params.id]);
-
-        await db.transaction(async (tx) => {
-            for (const item of items) {
-                if (item.grind === 'Pó/Moído') {
-                    await tx.run('UPDATE products SET stock_moido = stock_moido + ? WHERE id = ?', [item.quantity, item.product_id]);
-                } else if (item.grind === 'Em Grão') {
-                    await tx.run('UPDATE products SET stock_grao = stock_grao + ? WHERE id = ?', [item.quantity, item.product_id]);
-                } else {
-                    await tx.run('UPDATE products SET stock = stock + ? WHERE id = ?', [item.quantity, item.product_id]);
+        if (noStock) {
+            // Itens ainda estão no carrinho — apenas marca como Cancelado, sem restaurar estoque
+            await db.run("UPDATE sales SET status = 'Cancelado' WHERE id = ?", [req.params.id]);
+        } else {
+            const [items] = await db.query('SELECT product_id, quantity, grind FROM sale_items WHERE sale_id = ?', [req.params.id]);
+            await db.transaction(async (tx) => {
+                for (const item of items) {
+                    if (item.grind === 'Pó/Moído') {
+                        await tx.run('UPDATE products SET stock_moido = stock_moido + ? WHERE id = ?', [item.quantity, item.product_id]);
+                    } else if (item.grind === 'Em Grão') {
+                        await tx.run('UPDATE products SET stock_grao = stock_grao + ? WHERE id = ?', [item.quantity, item.product_id]);
+                    } else {
+                        await tx.run('UPDATE products SET stock = stock + ? WHERE id = ?', [item.quantity, item.product_id]);
+                    }
                 }
-            }
-            await tx.run("UPDATE sales SET status = 'Cancelado' WHERE id = ?", [req.params.id]);
-        });
+                await tx.run("UPDATE sales SET status = 'Cancelado' WHERE id = ?", [req.params.id]);
+            });
+            broadcastStockUpdate(items.map(i => ({ product_id: i.product_id, quantity: -(i.quantity), grind: i.grind })));
+        }
 
-        broadcastStockUpdate(items.map(i => ({ product_id: i.product_id, quantity: -(i.quantity), grind: i.grind })));
         res.json({ success: true });
     } catch (err) { next(err); }
 });
@@ -188,19 +217,6 @@ router.post('/infinitepay/tap', authenticateJWT, async (req, res, next) => {
     try {
         const db = getDb();
 
-        // Validar estoque
-        for (const item of items) {
-            const [rows] = await db.query('SELECT stock, stock_moido, stock_grao, name FROM products WHERE id = ?', [item.id]);
-            if (!rows.length) return res.status(400).json({ error: 'Produto não encontrado: ' + item.id });
-
-            let available = rows[0].stock;
-            if (item.grind === 'Pó/Moído') available = rows[0].stock_moido;
-            else if (item.grind === 'Em Grão') available = rows[0].stock_grao;
-
-            if (available < item.quantity)
-                return res.status(400).json({ error: `Estoque insuficiente (${item.grind || 'Geral'}): ${rows[0].name}` });
-        }
-
         // Criar venda pendente no banco
         const methodLabel = cardType === 'debit' ? 'Cartão Débito' : 'Cartão Crédito';
         const saleId = await db.transaction(async (tx) => {
@@ -212,19 +228,11 @@ router.post('/infinitepay/tap', authenticateJWT, async (req, res, next) => {
             for (const item of items) {
                 await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price, grind) VALUES (?, ?, ?, ?, ?, ?)',
                     [sId, item.id, item.name, item.quantity, item.price, item.grind || null]);
-
-                if (item.grind === 'Pó/Moído') {
-                    await tx.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [item.quantity, item.id]);
-                } else if (item.grind === 'Em Grão') {
-                    await tx.run('UPDATE products SET stock_grao = stock_grao - ? WHERE id = ?', [item.quantity, item.id]);
-                } else {
-                    await tx.run('UPDATE products SET stock = stock - ? WHERE id = ?', [item.quantity, item.id]);
-                }
+                // Estoque já foi reservado em /cart/deduct ao adicionar ao carrinho
             }
             return sId;
         });
 
-        broadcastStockUpdate(items.map(i => ({ product_id: i.id, quantity: i.quantity, grind: i.grind })));
         res.json({ success: true, sale_id: saleId, total: parseFloat(total) });
 
     } catch (err) { next(err); }
