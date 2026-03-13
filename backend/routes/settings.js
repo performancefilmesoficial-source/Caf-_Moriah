@@ -72,7 +72,7 @@ router.put('/', authenticateJWT, upload.fields([
         const [rows] = await db.query('SELECT id FROM site_settings LIMIT 1');
         const settingsId = rows.length ? rows[0].id : 1;
 
-        await db.run(
+        await db.query(
             `UPDATE site_settings SET
                 hero_title=?, hero_text=?, hero_video=?, hero_video_opacity=?, hero_text_align=?,
                 about_title=?, about_text_1=?, about_text_2=?, about_image=?, about_image_align=?,
