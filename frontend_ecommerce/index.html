@@ -372,12 +372,16 @@
                         </div>
 
                         <div className={`relative z-10 ${siteSettings.hero_text_align || 'text-center'} max-w-4xl mx-auto px-4 mt-8`}>
-                            <h1 className="font-sans text-4xl md:text-6xl lg:text-8xl mb-6 font-bold leading-tight drop-shadow-2xl whitespace-pre-line animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                                {siteSettings.hero_title || 'Moriah Café'}
-                            </h1>
-                            <p className="text-stone-200 md:text-xl font-light max-w-2xl mx-auto mb-10 drop-shadow-lg leading-relaxed whitespace-pre-line animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-300">
-                                {siteSettings.hero_text || 'Onde o café encontra o ritual.'}
-                            </p>
+                            {siteSettings.hero_title && (
+                                <h1 className="font-sans text-4xl md:text-6xl lg:text-8xl mb-6 font-bold leading-tight drop-shadow-2xl whitespace-pre-line animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                                    {siteSettings.hero_title}
+                                </h1>
+                            )}
+                            {siteSettings.hero_text && (
+                                <p className="text-stone-200 md:text-xl font-light max-w-2xl mx-auto mb-10 drop-shadow-lg leading-relaxed whitespace-pre-line animate-in fade-in slide-in-from-bottom-6 duration-1000 delay-300">
+                                    {siteSettings.hero_text}
+                                </p>
+                            )}
 
                             <button onClick={(e) => scrollToSection(e, 'produtos')} className="bg-moriah-gold text-moriah-black font-bold px-10 py-5 rounded-full shadow-gold hover:shadow-2xl hover:-translate-y-1 transition transform duration-300 flex items-center mx-auto gap-3 text-lg group">
                                 Explorar Cafés Especiais 
@@ -476,27 +480,37 @@
                 );
             };
 
-            const OurStory = () => (
-                <section className="bg-moriah-sand/10 py-24 px-4 overflow-hidden relative" id="nossahistoria">
-                    <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-12 lg:gap-20 items-center relative z-10">
-                        <div className="relative aspect-[4/5] md:aspect-square lg:aspect-[4/5] rounded-[2rem] overflow-hidden shadow-2xl group">
-                            <img src={siteSettings.about_image || "https://images.unsplash.com/photo-1611162458324-aae1eb4129a4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"} alt="Nossa História - Moriah Café" className={`w-full h-full object-cover ${siteSettings.about_image_align || 'object-center'} group-hover:scale-105 transition-transform duration-1000`} />
-                            <div className="absolute inset-0 bg-moriah-brown/10 mix-blend-overlay"></div>
+            const OurStory = () => {
+                if (!siteSettings.about_title && !siteSettings.about_text_1 && !siteSettings.about_text_2) return null;
+
+                return (
+                    <section className="bg-moriah-sand/10 py-24 px-4 overflow-hidden relative" id="nossahistoria">
+                        <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-12 lg:gap-20 items-center relative z-10">
+                            <div className="relative aspect-[4/5] md:aspect-square lg:aspect-[4/5] rounded-[2rem] overflow-hidden shadow-2xl group">
+                                <img src={siteSettings.about_image || "https://images.unsplash.com/photo-1611162458324-aae1eb4129a4?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"} alt="Nossa História - Moriah Café" className={`w-full h-full object-cover ${siteSettings.about_image_align || 'object-center'} group-hover:scale-105 transition-transform duration-1000`} />
+                                <div className="absolute inset-0 bg-moriah-brown/10 mix-blend-overlay"></div>
+                            </div>
+                            <div className="flex flex-col justify-center">
+                                {siteSettings.about_title && (
+                                    <h2 className="font-sans text-4xl md:text-5xl lg:text-6xl font-bold text-moriah-brown mb-8 leading-tight">
+                                        {siteSettings.about_title}
+                                    </h2>
+                                )}
+                                {siteSettings.about_text_1 && (
+                                    <p className="text-stone-600 font-light leading-relaxed mb-6 text-lg md:text-xl">
+                                        {siteSettings.about_text_1}
+                                    </p>
+                                )}
+                                {siteSettings.about_text_2 && (
+                                    <p className="text-stone-50 font-light leading-relaxed mb-10 text-base md:text-lg text-stone-500">
+                                        {siteSettings.about_text_2}
+                                    </p>
+                                )}
+                            </div>
                         </div>
-                        <div className="flex flex-col justify-center">
-                            <h2 className="font-sans text-4xl md:text-5xl lg:text-6xl font-bold text-moriah-brown mb-8 leading-tight">
-                                {siteSettings.about_title || 'Nossa História'}
-                            </h2>
-                            <p className="text-stone-600 font-light leading-relaxed mb-6 text-lg md:text-xl">
-                                {siteSettings.about_text_1 || 'Conteúdo inicial da nossa jornada...'}
-                            </p>
-                            <p className="text-stone-500 font-light leading-relaxed mb-10 text-base md:text-lg">
-                                {siteSettings.about_text_2 || 'Desde então servindo excelência e qualidade aos clientes.'}
-                            </p>
-                        </div>
-                    </div>
-                </section>
-            );
+                    </section>
+                );
+            };
 
             const Footer = () => (
                 <footer className="bg-moriah-black text-white pt-20 pb-32 md:pb-12 px-0 w-full overflow-hidden">
