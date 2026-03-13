@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Moriah Café - Especial & Luxuoso</title>
-    <link rel=icon type=image/png href=favicon.png>
-    <link rel=apple-touch-icon href=favicon.png>
+    <title>{document.title}</title>
+    <link rel="icon" id="favicon-link" type="image/png" href="favicon.png">
+    <link rel="apple-touch-icon" id="apple-favicon-link" href="favicon.png">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -210,6 +210,9 @@
             }, []);
 
             const [siteSettings, setSiteSettings] = React.useState({
+                site_title: 'Moriah Café - Especial & Luxuoso',
+                logo_url: 'logo.png',
+                favicon_url: 'favicon.png',
                 hero_title: 'O Café dos Seus Sonhos',
                 hero_text: 'Grãos selecionados das melhores origens do Brasil...',
                 hero_video: '',
@@ -217,20 +220,37 @@
                 about_title: 'Descubra Nossa História',
                 about_text_1: 'Nascida do amor profundo...',
                 about_text_2: 'Trabalhamos lado a lado...',
-                about_image: 'https://images.unsplash.com/photo-1611162458324-aae1eb4129a4'
+                about_image: 'https://images.unsplash.com/photo-1611162458324-aae1eb4129a4',
+                whatsapp_number: '5575992073245',
+                instagram_url: 'https://instagram.com/cafemoriah__',
+                contact_email: '',
+                cnpj: '63.644.379/0001-56',
+                address: 'Bahia / BA',
+                footer_text: 'Moriah Café. Todos os direitos reservados.'
             });
 
             React.useEffect(() => {
-                fetch('/api/site-settings')
+                fetch('/api/site-settings', { cache: 'no-store' })
                     .then(r => r.json())
                     .then(data => {
-                        if (data && data.hero_title) {
+                        if (data) {
                             // Sanitiza chaves nulas do BD para strings vazias evitando crash de métodos React
                             const sanitizedData = {};
                             Object.keys(data).forEach(key => {
-                                if (data[key]) sanitizedData[key] = data[key];
+                                sanitizedData[key] = data[key] || '';
                             });
-                            setSiteSettings(sanitizedData);
+                            
+                            const newSettings = { ...siteSettings, ...sanitizedData };
+                            setSiteSettings(newSettings);
+
+                            // Atualiza Meta Tags Dinâmicas
+                            if (sanitizedData.site_title) {
+                                document.title = sanitizedData.site_title;
+                            }
+                            if (sanitizedData.favicon_url) {
+                                document.getElementById('favicon-link').href = sanitizedData.favicon_url;
+                                document.getElementById('apple-favicon-link').href = sanitizedData.favicon_url;
+                            }
                         }
                     })
                     .catch(err => console.error("Sem CMS configurado!", err));
@@ -279,7 +299,7 @@
                     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-moriah-sand border-opacity-50">
                         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-3">
                             <div className="flex items-center cursor-pointer flex-shrink-0 max-w-[140px] md:max-w-[180px]" onClick={(e) => scrollToSection(e, 'inicio')}>
-                                <img src="logo.png" alt="Moriah Café Especial" className="h-9 md:h-11 w-auto object-contain max-w-full" />
+                                <img src={siteSettings.logo_url || "logo.png"} alt={siteSettings.site_title} className="h-9 md:h-11 w-auto object-contain max-w-full" />
                             </div>
                             <div className="hidden md:flex gap-8 text-sm font-medium">
                                 <a href="#inicio" onClick={(e) => scrollToSection(e, 'inicio')} className="hover:text-moriah-gold transition-colors">Home</a>
@@ -502,7 +522,7 @@
                                     </p>
                                 )}
                                 {siteSettings.about_text_2 && (
-                                    <p className="text-stone-50 font-light leading-relaxed mb-10 text-base md:text-lg text-stone-500">
+                                    <p className="text-stone-500 font-light leading-relaxed mb-10 text-base md:text-lg">
                                         {siteSettings.about_text_2}
                                     </p>
                                 )}
@@ -517,11 +537,13 @@
                     <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
                         <div className="md:col-span-1">
                             <div className="flex items-center gap-2 mb-6">
-                                <img src="logo.png" alt="Moriah" className="h-10 md:h-14 w-auto max-w-[140px] object-contain invert brightness-0" />
+                                <img src={siteSettings.logo_url || "logo.png"} alt={siteSettings.site_title} className="h-10 md:h-14 w-auto max-w-[140px] object-contain invert brightness-0" />
                             </div>
 
                             <div className="flex gap-4">
-                                <a href="https://instagram.com/cafemoriah__" target="_blank" className="text-stone-400 hover:text-moriah-gold transition"><LucideIcon name="instagram" className="w-6 h-6" /></a>
+                                {siteSettings.instagram_url && (
+                                    <a href={siteSettings.instagram_url} target="_blank" className="text-stone-400 hover:text-moriah-gold transition"><LucideIcon name="instagram" className="w-6 h-6" /></a>
+                                )}
                             </div>
                         </div>
                         <div>
@@ -538,7 +560,9 @@
                                 <li><button onClick={() => setIsTrackingOpen(true)} className="text-moriah-gold hover:text-white transition font-bold flex items-center gap-2"><LucideIcon name="package-search" className="w-4 h-4" /> Rastrear Meu Pedido</button></li>
                                 <li><a href="#" className="hover:text-moriah-gold transition underline">Política de Trocas e Devoluções</a></li>
                                 <li><a href="#" className="hover:text-moriah-gold transition">Dúvidas Frequentes</a></li>
-                                <li><a href="https://wa.me/5575992073245?text=Olá,%20Moriah%20Café!" target="_blank" className="hover:text-green-500 transition font-bold flex items-center gap-2"><LucideIcon name="message-circle" className="w-4 h-4" /> (75) 99207-3245</a></li>
+                                {siteSettings.whatsapp_number && (
+                                    <li><a href={`https://wa.me/${siteSettings.whatsapp_number}?text=Olá,%20Moriah%20Café!`} target="_blank" className="hover:text-green-500 transition font-bold flex items-center gap-2"><LucideIcon name="message-circle" className="w-4 h-4" /> ({siteSettings.whatsapp_number.length > 10 ? `${siteSettings.whatsapp_number.slice(2, 4)}) ${siteSettings.whatsapp_number.slice(4, 9)}-${siteSettings.whatsapp_number.slice(9)}` : siteSettings.whatsapp_number})</a></li>
+                                )}
                             </ul>
                         </div>
                         <div>
@@ -567,9 +591,9 @@
                     {/* Linha Legal e CNPJ */}
                     <div className="max-w-7xl mx-auto pt-8 mt-12 border-t border-white/10 flex flex-col md:flex-row items-center justify-between text-xs text-stone-500 font-light gap-4">
                         <div className="text-center md:text-left">
-                            <p className="mb-1 uppercase tracking-widest text-stone-400">&copy; {new Date().getFullYear()} Moriah Café. Todos os direitos reservados.</p>
-                            <p>MORIAH CAFE LTDA - CNPJ: 63.644.379/0001-56</p>
-                            <p>Bahia / BA</p>
+                            {siteSettings.footer_text && <p className="mb-1 uppercase tracking-widest text-stone-400">&copy; {new Date().getFullYear()} {siteSettings.footer_text}</p>}
+                            {siteSettings.cnpj && <p>MORIAH CAFE LTDA - CNPJ: {siteSettings.cnpj}</p>}
+                            {siteSettings.address && <p>{siteSettings.address}</p>}
                         </div>
                         <div className="flex gap-4">
                             <a href="#" className="hover:text-white transition">Termos de Serviço</a>

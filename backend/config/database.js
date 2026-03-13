@@ -108,12 +108,31 @@ async function initTables(db, mysql) {
         about_image MEDIUMTEXT,
         about_image_align TEXT,
         hero_banners MEDIUMTEXT,
+        site_title TEXT,
+        logo_url TEXT,
+        favicon_url TEXT,
+        whatsapp_number TEXT,
+        instagram_url TEXT,
+        contact_email TEXT,
+        cnpj TEXT,
+        address TEXT,
+        footer_text TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
-    try { await db.run('ALTER TABLE site_settings ADD COLUMN hero_video_opacity TEXT'); } catch (_) { }
-    try { await db.run('ALTER TABLE site_settings ADD COLUMN hero_text_align TEXT'); } catch (_) { }
-    try { await db.run('ALTER TABLE site_settings ADD COLUMN about_image_align TEXT'); } catch (_) { }
-    try { await db.run('ALTER TABLE site_settings ADD COLUMN hero_banners MEDIUMTEXT'); } catch (_) { }
+    const siteSettingsCols = [
+        'hero_video_opacity TEXT', 'hero_text_align TEXT', 'about_image_align TEXT', 'hero_banners MEDIUMTEXT',
+        'site_title TEXT', 'logo_url TEXT', 'favicon_url TEXT', 'whatsapp_number TEXT', 'instagram_url TEXT',
+        'contact_email TEXT', 'cnpj TEXT', 'address TEXT', 'footer_text TEXT'
+    ];
+    for (const col of siteSettingsCols) {
+        try {
+            await db.query(`ALTER TABLE site_settings ADD COLUMN ${col}`);
+        } catch (e) {
+            if (!e.message.includes('Duplicate column') && !e.message.includes('already exists')) {
+                console.error(`[DB] ALTER site_settings ADD ${col.split(' ')[0]}:`, e.message);
+            }
+        }
+    }
     if (mysql) {
         try { await db.run('ALTER TABLE site_settings MODIFY COLUMN hero_video MEDIUMTEXT'); } catch (_) { }
         try { await db.run('ALTER TABLE site_settings MODIFY COLUMN about_image MEDIUMTEXT'); } catch (_) { }
