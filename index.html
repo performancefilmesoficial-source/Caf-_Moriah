@@ -983,7 +983,6 @@
                                 const src = pending || waiting;
                                 setLastSale({ id: saleId, total: src.total, method: src.method, items: src.cart || cartRef.current });
                             }
-                            addNotification('Venda Confirmada', 'InfinitePay: pagamento aprovado!', 'success');
                             setIsSuccessModalOpen(true);
                             localStorage.removeItem('ip_pending');
                         } else if (data.status === 'Cancelado') {
@@ -991,10 +990,16 @@
                             setIpWaiting(null);
                             setIsManualConfirmOpen(false);
                             localStorage.removeItem('ip_pending');
-                            addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
                             setIsCheckoutOpen(true);
+                        } else {
+                            // Ainda "Aguardando Pagamento" — usuário voltou do InfinitePay.
+                            // No iOS/Safari não é possível detectar automaticamente o resultado.
+                            // Restaura ipWaiting se perdido (aba recarregada) e abre confirmação manual.
+                            if (!ipWaitingRef.current && pending?.sale_id) {
+                                setIpWaiting({ sale_id: pending.sale_id, total: pending.total, method: pending.method, checkout_url: pending.checkout_url || null });
+                            }
+                            setIsManualConfirmOpen(true);
                         }
-                        // Se ainda "Aguardando Pagamento", não faz nada — usuário pode ter voltado antes de terminar
                     } catch (_) {}
                 };
 
@@ -1005,6 +1010,43 @@
                     window.removeEventListener('focus', onVisible);
                 };
             }, []);
+
+            // Recupera pagamento pendente após aba ser morta pelo iOS.
+            // Quando Safari mata a aba e o usuário volta, ip_pending está no localStorage
+            // mas não há ip_paid/ip_cancelled na URL (InfinitePay não chamou result_url).
+            // Restaura o estado de espera e abre confirmação manual imediatamente.
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('ip_paid') || params.get('ip_cancelled')) return; // outro useEffect trata
+                if (!currentUser) return; // aguarda login
+
+                const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
+                if (!pending?.sale_id) return;
+
+                // Verifica status atual no banco
+                const token = localStorage.getItem('moriah_jwt');
+                window.fetch(`/api/pdv/infinitepay/status/${pending.sale_id}`, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                }).then(r => r.ok ? r.json() : null).then(data => {
+                    if (!data) return;
+                    if (data.paid) {
+                        setLastSale({ id: pending.sale_id, total: pending.total, method: pending.method, items: pending.cart });
+                        setIsSuccessModalOpen(true);
+                        localStorage.removeItem('ip_pending');
+                    } else if (data.status === 'Cancelado') {
+                        setIsCheckoutOpen(true);
+                        localStorage.removeItem('ip_pending');
+                    } else {
+                        // Pagamento ainda pendente — restaura o modal de espera e abre confirmação manual
+                        setIpWaiting({ sale_id: pending.sale_id, total: pending.total, method: pending.method, checkout_url: pending.checkout_url || null });
+                        setIsManualConfirmOpen(true);
+                    }
+                }).catch(() => {
+                    // Erro de rede — restaura o modal para o operador confirmar manualmente
+                    setIpWaiting({ sale_id: pending.sale_id, total: pending.total, method: pending.method, checkout_url: pending.checkout_url || null });
+                    setIsManualConfirmOpen(true);
+                });
+            }, [currentUser]);
 
             // Busca vendas do banco de dados ao abrir a aba de vendas
             // Auto-refresh a cada 30s para capturar pedidos online automaticamente
@@ -1250,8 +1292,8 @@
 
                     const checkout_url = `infinitepaydash://infinitetap-app?amount=${amountCents}&payment_method=${infinitePayMethod}&installments=${installments}&order_id=${orderId}&result_url=${resultUrl}&app_client_referrer=${appClientReferrer}&af_force_deeplink=${afForceDeeplink}`;
 
-                    // Salva o carrinho provisoriamente para caso o iOS/Android recarregue a página ao voltar do deep link
-                    localStorage.setItem('ip_pending', JSON.stringify({ total, method: methodLabel, cart }));
+                    // Salva estado completo para recuperação caso o iOS mate a aba ao voltar do app nativo
+                    localStorage.setItem('ip_pending', JSON.stringify({ sale_id, total, method: methodLabel, cart, checkout_url }));
 
                     // Em vez de navegar direto (bloqueado pelo android em alguns casos e abre web), 
                     // mostramos um modal onde o operador tem que clicar explicitamente para abrir a maquininha
