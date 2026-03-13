@@ -718,10 +718,15 @@
             const [siteSettings, setSiteSettings] = useState({
                 hero_title: '', hero_text: '', hero_video: '',
                 hero_banners: '[]',
-                about_title: '', about_text_1: '', about_text_2: '', about_image: ''
+                about_title: '', about_text_1: '', about_text_2: '', about_image: '',
+                site_title: '', logo_url: '', favicon_url: '',
+                whatsapp_number: '', instagram_url: '', contact_email: '',
+                cnpj: '', address: '', footer_text: ''
             });
             const [videoFile, setVideoFile] = useState(null);
             const [imageFile, setImageFile] = useState(null);
+            const [logoFile, setLogoFile] = useState(null);
+            const [faviconFile, setFaviconFile] = useState(null);
             const [bannerFiles, setBannerFiles] = useState([]);
             const [notifications, setNotifications] = useState(() => {
                 const saved = localStorage.getItem('moriah_notifications');
@@ -2279,6 +2284,8 @@ Qualquer dúvida, estamos à disposição!`;
                                     // Adicionando arquivos caso selecionados
                                     if (videoFile) formData.append('hero_video_file', videoFile);
                                     if (imageFile) formData.append('about_image_file', imageFile);
+                                    if (logoFile) formData.append('logo_file', logoFile);
+                                    if (faviconFile) formData.append('favicon_file', faviconFile);
                                     
                                     // Adiciona novos banners
                                     if (bannerFiles && bannerFiles.length > 0) {
@@ -2291,26 +2298,63 @@ Qualquer dúvida, estamos à disposição!`;
                                             body: formData
                                         });
                                         if (res.ok) {
-                                            alert('Conteúdo atualizado com sucesso no site!');
                                             const resData = await res.json();
                                             setSiteSettings(prev => ({
                                                 ...prev,
                                                 hero_video: resData.hero_video || prev.hero_video,
                                                 about_image: resData.about_image || prev.about_image,
+                                                logo_url: resData.logo_url || prev.logo_url,
+                                                favicon_url: resData.favicon_url || prev.favicon_url,
                                                 hero_banners: JSON.stringify(resData.hero_banners || [])
                                             }));
-
-                                            // Limpa states para não enviar form de novo e reseta formulário DOM
                                             setVideoFile(null);
                                             setImageFile(null);
+                                            setLogoFile(null);
+                                            setFaviconFile(null);
                                             setBannerFiles([]);
                                             e.target.reset();
+                                            alert('✅ Conteúdo atualizado com sucesso no site!');
+                                        } else {
+                                            let errMsg = 'Erro ao atualizar configurações.';
+                                            try { const d = await res.json(); errMsg = d.error || d.message || errMsg; } catch(_) {}
+                                            alert('❌ ' + errMsg + ' (HTTP ' + res.status + ')');
                                         }
-                                        else alert('Erro ao atualizar configurações.');
                                     } catch (err) {
                                         alert('Erro de conexão ao salvar.');
                                     }
                                 }} class="space-y-6">
+
+                                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                        <h3 class="font-bold text-lg mb-4 text-moriah-brown">Identidade Visual & Título</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Título da Aba (Browser)</label>
+                                                <input value={siteSettings.site_title || ''} onChange={e => setSiteSettings({ ...siteSettings, site_title: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="Moriah Café - Especial & Luxuoso" />
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Logotipo do Site (PNG/SVG)</label>
+                                                <div class="relative w-full">
+                                                    <input type="file" accept="image/*" onChange={(e) => setLogoFile(e.target.files[0])} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                    <div class="w-full px-4 py-2 bg-stone-100 border border-stone-200 border-dashed rounded-xl flex items-center justify-center gap-2 text-stone-500 hover:bg-stone-200 transition">
+                                                        <LucideIcon name="image" className="w-4 h-4" />
+                                                        <span class="text-xs font-medium">{logoFile ? logoFile.name : 'Trocar Logo'}</span>
+                                                    </div>
+                                                </div>
+                                                {siteSettings.logo_url && <img src={siteSettings.logo_url} class="mt-2 h-10 w-auto object-contain bg-stone-800 p-1 rounded" />}
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Ícone da Aba (Favicon)</label>
+                                                <div class="relative w-full">
+                                                    <input type="file" accept="image/*" onChange={(e) => setFaviconFile(e.target.files[0])} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                                    <div class="w-full px-4 py-2 bg-stone-100 border border-stone-200 border-dashed rounded-xl flex items-center justify-center gap-2 text-stone-500 hover:bg-stone-200 transition">
+                                                        <LucideIcon name="info" className="w-4 h-4" />
+                                                        <span class="text-xs font-medium">{faviconFile ? faviconFile.name : 'Trocar Favicon'}</span>
+                                                    </div>
+                                                </div>
+                                                {siteSettings.favicon_url && <img src={siteSettings.favicon_url} class="mt-2 h-8 w-auto object-contain" />}
+                                            </div>
+                                        </div>
+                                    </div>
 
                                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
                                         <h3 class="font-bold text-lg mb-4 text-moriah-brown">Apresentação Principal (Carrossel de Banners)</h3>
@@ -2430,12 +2474,11 @@ Qualquer dúvida, estamos à disposição!`;
                                                 <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Link da Imagem Ilustrativa</label>
                                                 <div class="flex flex-col gap-2">
                                                     <input value={siteSettings.about_image || ''} onChange={e => setSiteSettings({ ...siteSettings, about_image: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="Link externo da foto (opcional)" />
-
                                                     <div class="relative w-full">
                                                         <input type="file" name="about_image_file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])} class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                                         <div class="w-full px-4 py-3 bg-stone-100 border border-stone-200 border-dashed rounded-xl flex items-center justify-center gap-2 text-stone-500 hover:bg-stone-200 transition">
                                                             <LucideIcon name="upload-cloud" className="w-4 h-4" />
-                                                            <span class="text-sm font-medium">{imageFile ? `Foto Selecionada: ${imageFile.name}` : 'Fazer Upload de Foto JPG/PNG'}</span>
+                                                            <span class="text-sm font-medium">{imageFile ? `Selecionado: ${imageFile.name}` : 'Upload de Foto'}</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2443,6 +2486,43 @@ Qualquer dúvida, estamos à disposição!`;
                                             </div>
                                         </div>
                                     </div>
+
+                                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                        <h3 class="font-bold text-lg mb-4 text-moriah-brown">Contatos & Redes Sociais</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">WhatsApp (Apenas Números)</label>
+                                                <input value={siteSettings.whatsapp_number || ''} onChange={e => setSiteSettings({ ...siteSettings, whatsapp_number: e.target.value.replace(/\D/g, '') })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="5575992073245" />
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">URL do Instagram</label>
+                                                <input value={siteSettings.instagram_url || ''} onChange={e => setSiteSettings({ ...siteSettings, instagram_url: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="https://instagram.com/perfis..." />
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">E-mail de Contato</label>
+                                                <input value={siteSettings.contact_email || ''} onChange={e => setSiteSettings({ ...siteSettings, contact_email: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="contato@moriahcafe.com.br" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                        <h3 class="font-bold text-lg mb-4 text-moriah-brown">Rodapé & Informações Legais</h3>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">CNPJ</label>
+                                                <input value={siteSettings.cnpj || ''} onChange={e => setSiteSettings({ ...siteSettings, cnpj: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="63.644.379/0001-56" />
+                                            </div>
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Endereço / Cidade</label>
+                                                <input value={siteSettings.address || ''} onChange={e => setSiteSettings({ ...siteSettings, address: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl" placeholder="Feira de Santana / BA" />
+                                            </div>
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Texto do Rodapé (Direitos Autorais)</label>
+                                                <textarea rows="2" value={siteSettings.footer_text || ''} onChange={e => setSiteSettings({ ...siteSettings, footer_text: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl text-xs" placeholder="Moriah Café. Todos os direitos reservados."></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+
 
                                     <button type="submit" class="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl transition-all shadow-lg flex justify-center items-center gap-2">
                                         <LucideIcon name="globe" className="w-5 h-5" /> Atualizar Loja Virtual

@@ -7,7 +7,13 @@ const { authenticateJWT } = require('../middleware/auth');
 const router = express.Router();
 
 // memoryStorage → Base64 no banco (persiste entre deploys no Docker)
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 50 * 1024 * 1024,   // 50MB por arquivo
+        fieldSize: 50 * 1024 * 1024   // 50MB por campo texto (Base64 round-trip)
+    }
+});
 
 function toBase64(file) {
     return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;

@@ -134,8 +134,12 @@ async function initTables(db, mysql) {
         }
     }
     if (mysql) {
+        // Garante MEDIUMTEXT (16MB) para todos os campos que armazenam Base64
         try { await db.run('ALTER TABLE site_settings MODIFY COLUMN hero_video MEDIUMTEXT'); } catch (_) { }
         try { await db.run('ALTER TABLE site_settings MODIFY COLUMN about_image MEDIUMTEXT'); } catch (_) { }
+        try { await db.run('ALTER TABLE site_settings MODIFY COLUMN hero_banners MEDIUMTEXT'); } catch (_) { }
+        try { await db.run('ALTER TABLE site_settings MODIFY COLUMN logo_url MEDIUMTEXT'); } catch (_) { }
+        try { await db.run('ALTER TABLE site_settings MODIFY COLUMN favicon_url MEDIUMTEXT'); } catch (_) { }
         try { await db.run('ALTER TABLE products MODIFY COLUMN image_url MEDIUMTEXT'); } catch (_) { }
     }
 
