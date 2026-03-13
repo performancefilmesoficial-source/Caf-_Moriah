@@ -621,11 +621,20 @@
 
             const configMap = {
                 processing: { icon: 'loader', color: 'text-moriah-brown animate-spin', title: 'Processando...', sub: 'Aguardando resposta da maquininha.' },
-                paid: { icon: 'check-circle', color: 'text-emerald-500', title: 'Pagamento Detectado', sub: 'Clique abaixo para voltar e FINALIZAR a venda.' },
-                cancelled: { icon: 'x-circle', color: 'text-red-500', title: 'Não Concluído', sub: 'O processo foi cancelado na maquininha.' },
-                error: { icon: 'alert-triangle', color: 'text-amber-500', title: 'Atenção', sub: 'Não conseguimos confirmar o status agora.' }
+                paid: { icon: 'check-circle', color: 'text-emerald-500', title: 'Pagamento Concluído', sub: 'O pagamento foi confirmado! Feche esta tela para voltar ao seu PDV e finalizar.' },
+                cancelled: { icon: 'x-circle', color: 'text-red-500', title: 'Não Concluído', sub: 'O processo foi cancelado. Feche esta tela e tente novamente no PDV.' },
+                error: { icon: 'alert-triangle', color: 'text-amber-500', title: 'Atenção', sub: 'Feche esta tela, volte ao seu PDV e confirme o status.' }
             };
             const config = configMap[status] || configMap.error;
+
+            const handleCloseAppWindow = () => {
+                // Tenta fechar a janela nativamente
+                window.close();
+                // Se a API for bloqueada por segurança do browser, dá um fallback visual pro usuário
+                setTimeout(() => {
+                    alert('Por favor, feche esta aba/página manualmente arrastando-a para cima e volte ao seu aplicativo do PDV.');
+                }, 300);
+            };
 
             return (
                 <div class="fixed inset-0 bg-stone-50 flex items-center justify-center p-4 z-[999]">
@@ -634,14 +643,14 @@
                             <LucideIcon name={config.icon} className="w-10 h-10" />
                         </div>
                         <h2 class="text-2xl font-black text-stone-900 mb-2">{config.title}</h2>
-                        <p class="text-stone-500 text-sm mb-8">{config.sub}</p>
+                        <p class="text-stone-500 text-sm mb-8 font-medium px-4">{config.sub}</p>
                         
-                        <button onClick={() => window.location.href = '/'} class="w-full py-4 bg-stone-900 text-white rounded-2xl font-bold hover:bg-black transition-all shadow-lg flex items-center justify-center gap-2 mb-4">
-                            <LucideIcon name="arrow-left" className="w-5 h-5" />
-                            VOLTAR AO PDV
+                        <button onClick={handleCloseAppWindow} class="w-full py-4 bg-stone-900 text-white rounded-[20px] font-black tracking-wide hover:bg-black transition-all shadow-lg flex items-center justify-center gap-2 mb-4 active:scale-95">
+                            <LucideIcon name="x" className="w-5 h-5 text-stone-300" />
+                            FECHAR ABA E VOLTAR
                         </button>
 
-                        <p class="text-[10px] text-stone-300 mt-2 uppercase tracking-widest font-bold">Moriah Café · Validação de Venda</p>
+                        <p class="text-[10px] text-stone-300 mt-2 uppercase tracking-widest font-bold">Moriah Café · Sistema PWA</p>
                     </div>
                 </div>
             );
