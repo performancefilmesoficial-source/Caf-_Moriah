@@ -867,10 +867,14 @@
                                 window.history.replaceState({}, '', window.location.pathname);
                             } else {
                                 if (tapResult) {
-                                    alert('Pagamento não confirmado na maquininha.');
-                                    if (pending && pending.cart) {
-                                        setCart(pending.cart);
-                                    }
+                                    // Pagamento não confirmado: mostra modal para confirmar na mão ou cancelar
+                                    setIpWaiting({
+                                        sale_id: parseInt(targetId),
+                                        total: pending?.total ?? 0,
+                                        method: pending?.method ?? 'Cartão',
+                                        checkout_url: null
+                                    });
+                                    setIsManualConfirmOpen(true);
                                     localStorage.removeItem('ip_pending');
                                     window.history.replaceState({}, '', window.location.pathname);
                                 }
@@ -1138,6 +1142,21 @@
                     setIsManualConfirmOpen(true);
                 } else {
                     setIpWaiting(null);
+                }
+            };
+
+            const cancelSaleAndClear = async () => {
+                const pending = ipWaiting;
+                setIsManualConfirmOpen(false);
+                setIpWaiting(null);
+                localStorage.removeItem('ip_pending');
+                if (pending?.sale_id) {
+                    try {
+                        await apiFetch(`/api/pdv/sales/${pending.sale_id}/cancel`, { method: 'PUT' });
+                        addNotification('Venda Cancelada', `Venda #${pending.sale_id} cancelada. Estoque restaurado.`, 'warning');
+                    } catch (err) {
+                        console.error('[PDV] Erro ao cancelar venda:', err);
+                    }
                 }
             };
 
@@ -1741,7 +1760,7 @@ Qualquer dúvida, estamos à disposição!`;
                                                 <button onClick={confirmManualPayment} class="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 active:scale-95">
                                                     <LucideIcon name="check-circle" className="w-6 h-6" /> Sim, Confirmar Venda
                                                 </button>
-                                                <button onClick={() => { setIsManualConfirmOpen(false); setIpWaiting(null); }} class="w-full py-4 bg-stone-100 text-stone-600 rounded-2xl font-black text-lg hover:bg-stone-200 transition-all active:scale-95">
+                                                <button onClick={cancelSaleAndClear} class="w-full py-4 bg-red-50 text-red-600 rounded-2xl font-black text-lg hover:bg-red-100 transition-all active:scale-95 border border-red-200">
                                                     Não, Cancelar Operação
                                                 </button>
                                                 <button onClick={() => setIsManualConfirmOpen(false)} class="text-stone-400 font-bold text-xs hover:text-stone-600 py-2">Voltar para Aguardo</button>

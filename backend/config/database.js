@@ -90,8 +90,10 @@ async function initTables(db, mysql) {
         product_id INTEGER,
         product_name TEXT,
         quantity INTEGER,
-        price REAL
+        price REAL,
+        grind VARCHAR(20)
     )`);
+    try { await db.run('ALTER TABLE sale_items ADD COLUMN grind VARCHAR(20)'); } catch (_) { }
 
     await db.run(`CREATE TABLE IF NOT EXISTS site_settings (
         id INTEGER PRIMARY KEY ${autoInc},

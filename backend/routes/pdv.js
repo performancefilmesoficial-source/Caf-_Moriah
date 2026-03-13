@@ -84,8 +84,8 @@ router.post('/infinitepay/charge', authenticateJWT, async (req, res, next) => {
             );
             const sId = result[0].insertId;
             for (const item of items) {
-                await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
-                    [sId, item.id, item.name, item.quantity, item.price]);
+                await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price, grind) VALUES (?, ?, ?, ?, ?, ?)',
+                    [sId, item.id, item.name, item.quantity, item.price, item.grind || null]);
 
                 if (item.grind === 'Pó/Moído') {
                     await tx.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [item.quantity, item.id]);
@@ -151,6 +151,34 @@ router.put('/sales/:id/confirm', authenticateJWT, async (req, res, next) => {
     } catch (err) { next(err); }
 });
 
+// PUT /api/pdv/sales/:id/cancel  — cancela venda e restaura estoque
+router.put('/sales/:id/cancel', authenticateJWT, async (req, res, next) => {
+    try {
+        const db = getDb();
+        const [saleRows] = await db.query('SELECT status FROM sales WHERE id = ?', [req.params.id]);
+        if (!saleRows.length) return res.status(404).json({ error: 'Venda não encontrada.' });
+        if (saleRows[0].status === 'Cancelado') return res.json({ success: true, message: 'Já cancelada.' });
+
+        const [items] = await db.query('SELECT product_id, quantity, grind FROM sale_items WHERE sale_id = ?', [req.params.id]);
+
+        await db.transaction(async (tx) => {
+            for (const item of items) {
+                if (item.grind === 'Pó/Moído') {
+                    await tx.run('UPDATE products SET stock_moido = stock_moido + ? WHERE id = ?', [item.quantity, item.product_id]);
+                } else if (item.grind === 'Em Grão') {
+                    await tx.run('UPDATE products SET stock_grao = stock_grao + ? WHERE id = ?', [item.quantity, item.product_id]);
+                } else {
+                    await tx.run('UPDATE products SET stock = stock + ? WHERE id = ?', [item.quantity, item.product_id]);
+                }
+            }
+            await tx.run("UPDATE sales SET status = 'Cancelado' WHERE id = ?", [req.params.id]);
+        });
+
+        broadcastStockUpdate(items.map(i => ({ product_id: i.product_id, quantity: -(i.quantity), grind: i.grind })));
+        res.json({ success: true });
+    } catch (err) { next(err); }
+});
+
 // POST /api/pdv/infinitepay/tap (Tap to Pay nativo)
 router.post('/infinitepay/tap', authenticateJWT, async (req, res, next) => {
     const { total, items, cardType } = req.body;
@@ -182,8 +210,8 @@ router.post('/infinitepay/tap', authenticateJWT, async (req, res, next) => {
             );
             const sId = result[0].insertId;
             for (const item of items) {
-                await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price) VALUES (?, ?, ?, ?, ?)',
-                    [sId, item.id, item.name, item.quantity, item.price]);
+                await tx.run('INSERT INTO sale_items (sale_id, product_id, product_name, quantity, price, grind) VALUES (?, ?, ?, ?, ?, ?)',
+                    [sId, item.id, item.name, item.quantity, item.price, item.grind || null]);
 
                 if (item.grind === 'Pó/Moído') {
                     await tx.run('UPDATE products SET stock_moido = stock_moido - ? WHERE id = ?', [item.quantity, item.id]);
