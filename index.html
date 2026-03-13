@@ -1147,16 +1147,30 @@
 
             const cancelSaleAndClear = async () => {
                 const pending = ipWaiting;
+                // Fecha modais e para polling ANTES de operação assíncrona
                 setIsManualConfirmOpen(false);
                 setIpWaiting(null);
+                clearInterval(ipPollingRef.current);
                 localStorage.removeItem('ip_pending');
-                if (pending?.sale_id) {
-                    try {
-                        await apiFetch(`/api/pdv/sales/${pending.sale_id}/cancel`, { method: 'PUT' });
+
+                if (!pending?.sale_id) return;
+
+                try {
+                    // Usa window.fetch diretamente — evita o auto-logout do apiFetch
+                    // caso o token esteja expirado (403 não deve derrubar a sessão aqui)
+                    const token = localStorage.getItem('moriah_jwt');
+                    const res = await window.fetch(`/api/pdv/sales/${pending.sale_id}/cancel`, {
+                        method: 'PUT',
+                        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                    });
+                    if (res.ok) {
                         addNotification('Venda Cancelada', `Venda #${pending.sale_id} cancelada. Estoque restaurado.`, 'warning');
-                    } catch (err) {
-                        console.error('[PDV] Erro ao cancelar venda:', err);
+                    } else {
+                        console.warn('[PDV] Cancel status', res.status);
+                        addNotification('Atenção', `Venda #${pending.sale_id} não foi cancelada automaticamente. Verifique o relatório.`, 'warning');
                     }
+                } catch (err) {
+                    console.error('[PDV] Erro ao cancelar venda:', err);
                 }
             };
 
