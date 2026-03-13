@@ -3,7 +3,13 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- Forçar No-Cache Absoluto (Combatendo Safari iOS agressivo) -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate, proxy-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Moriah Café - PDV & Gestão</title>
     <link rel=icon type=image/png href=favicon.png>
     <link rel=apple-touch-icon href=favicon.png>
@@ -28,6 +34,14 @@
                 regs.forEach(function (r) { r.unregister(); });
             });
         }
+        
+        // Anti Back-Forward Cache (BFCache) for Safari iOS
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) {
+                console.log("Página restaurada via bfcach: Forçando reload.");
+                window.location.reload();
+            }
+        });
     </script>
 
     <script>
@@ -1296,9 +1310,9 @@
                     const amountCents = Math.round(total * 100);
                     const infinitePayMethod = cardType; 
                     const installments = finalInstallments;
-                    
-                    // result_url aponta para o PDV com o ID temporário
-                    const resultUrl = encodeURIComponent(`${window.location.origin}/?sale_id=${order_nsu}`);
+                    // result_url aponta para o PDV com o ID temporário e um bust-cache (t=Date.now)
+                    // Isso força o app externo a abrir uma aba fresca do Safari sem usar cache velho
+                    const resultUrl = encodeURIComponent(`${window.location.origin}/?sale_id=${order_nsu}&t=${Date.now()}`);
                     const appClientReferrer = 'MoriahPDV';
                     const fullCheckoutUrl = `infinitepaydash://infinitetap-app?amount=${amountCents}&payment_method=${infinitePayMethod}&installments=${installments}&order_id=${order_nsu}&result_url=${resultUrl}&app_client_referrer=${appClientReferrer}&af_force_deeplink=true`;
 

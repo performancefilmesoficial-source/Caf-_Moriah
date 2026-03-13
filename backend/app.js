@@ -173,8 +173,24 @@ app.use('/api/customers', customersRoutes);
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // ─── Frontend: roteamento por hostname ───────────────────────────────────────
-const ecommerceStatic = express.static(path.join(__dirname, '..', 'frontend_ecommerce'));
-const pdvStatic = express.static(path.join(__dirname, '..'));
+const ecommerceStatic = express.static(path.join(__dirname, '..', 'frontend_ecommerce'), {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.html') || path.endsWith('.js')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+});
+const pdvStatic = express.static(path.join(__dirname, '..'), {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.html') || path.endsWith('.js')) {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+});
 
 app.use('/ecommerce', ecommerceStatic);
 
