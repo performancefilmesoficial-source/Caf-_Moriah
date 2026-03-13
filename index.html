@@ -7,6 +7,9 @@
     <title>Moriah Café - PDV & Gestão</title>
     <link rel=icon type=image/png href=favicon.png>
     <link rel=apple-touch-icon href=favicon.png>
+    <!-- Google Fonts para seletor de fontes -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@700;900&family=Raleway:wght@700;900&display=swap" rel="stylesheet">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -578,6 +581,15 @@
             );
         };
 
+        const FONT_OPTIONS = [
+            { value: 'sans',       label: 'Padrão (Sem Serifa)',  style: 'system-ui, sans-serif' },
+            { value: 'serif',      label: 'Clássico (Georgia)',    style: 'Georgia, serif' },
+            { value: 'playfair',   label: 'Playfair Display',      style: "'Playfair Display', serif" },
+            { value: 'cormorant',  label: 'Cormorant Garamond',    style: "'Cormorant Garamond', serif" },
+            { value: 'montserrat', label: 'Montserrat',            style: "'Montserrat', sans-serif" },
+            { value: 'raleway',    label: 'Raleway',               style: "'Raleway', sans-serif" },
+        ];
+
         const App = () => {
             const [currentUser, setCurrentUser] = useState(() => {
                 try {
@@ -718,6 +730,7 @@
             const [siteSettings, setSiteSettings] = useState({
                 hero_title: '', hero_text: '', hero_video: '',
                 hero_banners: '[]',
+                hero_font_family: 'sans', hero_title_size: '5', hero_text_color: '#ffffff',
                 about_title: '', about_text_1: '', about_text_2: '', about_image: '',
                 site_title: '', logo_url: '', favicon_url: '',
                 whatsapp_number: '', instagram_url: '', contact_email: '',
@@ -2359,6 +2372,39 @@ Qualquer dúvida, estamos à disposição!`;
                                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
                                         <h3 class="font-bold text-lg mb-4 text-moriah-brown">Apresentação Principal (Carrossel de Banners)</h3>
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                            {/* ── PRÉVIA AO VIVO ── */}
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-2 flex items-center gap-1.5 block">
+                                                    <LucideIcon name="eye" className="w-3.5 h-3.5" /> Prévia em Tempo Real
+                                                </label>
+                                                <div class="relative rounded-2xl overflow-hidden bg-stone-900 select-none" style={{ height: '210px' }}>
+                                                    {(() => {
+                                                        let banners = [];
+                                                        try { banners = JSON.parse(siteSettings.hero_banners || '[]'); } catch(e) {}
+                                                        const fontOpt = FONT_OPTIONS.find(f => f.value === (siteSettings.hero_font_family || 'sans')) || FONT_OPTIONS[0];
+                                                        const sizeRem = parseFloat(siteSettings.hero_title_size || '5') || 5;
+                                                        return (<>
+                                                            {banners[0]
+                                                                ? <><img src={banners[0]} class="absolute inset-0 w-full h-full object-cover" alt="" />
+                                                                    <div class="absolute inset-0 bg-black" style={{ opacity: parseFloat(siteSettings.hero_video_opacity) || 0 }}></div></>
+                                                                : <div class="absolute inset-0 bg-gradient-to-br from-stone-700 to-stone-900 flex items-end pb-3 justify-center">
+                                                                    <p class="text-stone-500 text-[10px]">↓ Adicione um banner para ver o fundo</p>
+                                                                  </div>
+                                                            }
+                                                            <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none"></div>
+                                                            <div class={`absolute inset-0 flex items-center justify-center z-10 px-6`}>
+                                                                <div class={`${siteSettings.hero_text_align || 'text-center'} w-full`}>
+                                                                    {siteSettings.hero_title && <p class="font-bold leading-tight whitespace-pre-line drop-shadow-lg" style={{ fontFamily: fontOpt.style, fontSize: `${(sizeRem * 0.30).toFixed(2)}rem`, color: siteSettings.hero_text_color || '#ffffff' }}>{siteSettings.hero_title}</p>}
+                                                                    {siteSettings.hero_text && <p class="mt-1 whitespace-pre-line leading-snug" style={{ fontSize: '0.55rem', color: '#d6d3d1' }}>{siteSettings.hero_text}</p>}
+                                                                </div>
+                                                            </div>
+                                                            <div class="absolute top-2 right-2 bg-black/40 text-white text-[9px] px-2 py-0.5 rounded-full font-bold tracking-wide pointer-events-none">PRÉVIA</div>
+                                                        </>);
+                                                    })()}
+                                                </div>
+                                            </div>
+
                                             <div class="md:col-span-2">
                                                 <label class="text-[10px] uppercase font-bold text-stone-400 flex items-center justify-between mb-1 block">
                                                     <span class="flex items-center gap-2">
@@ -2380,6 +2426,14 @@ Qualquer dúvida, estamos à disposição!`;
                                                 </label>
                                                 <textarea rows="2" value={siteSettings.hero_text || ''} onChange={e => setSiteSettings({ ...siteSettings, hero_text: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl text-stone-600 font-medium"></textarea>
                                             </div>
+                                            {/* Fonte */}
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Fonte do Título</label>
+                                                <select value={siteSettings.hero_font_family || 'sans'} onChange={e => setSiteSettings({ ...siteSettings, hero_font_family: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl text-sm">
+                                                    {FONT_OPTIONS.map(f => <option key={f.value} value={f.value} style={{ fontFamily: f.style }}>{f.label}</option>)}
+                                                </select>
+                                            </div>
+                                            {/* Alinhamento */}
                                             <div>
                                                 <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Alinhamento do Texto</label>
                                                 <select value={siteSettings.hero_text_align || 'text-center'} onChange={e => setSiteSettings({ ...siteSettings, hero_text_align: e.target.value })} class="w-full px-4 py-2 bg-stone-50 border rounded-xl text-sm">
@@ -2388,12 +2442,31 @@ Qualquer dúvida, estamos à disposição!`;
                                                     <option value="text-right">Direita</option>
                                                 </select>
                                             </div>
+                                            {/* Tamanho do título */}
                                             <div>
                                                 <label class="text-[10px] uppercase font-bold text-stone-400 flex justify-between mb-1 block">
-                                                    <span>Brilho/Opacidade do Efeito (Escurecer)</span>
-                                                    <span>{siteSettings.hero_video_opacity || '0.6'}</span>
+                                                    <span>Tamanho do Título</span>
+                                                    <span class="font-mono">{siteSettings.hero_title_size || '5'}rem</span>
                                                 </label>
-                                                <input type="range" min="0" max="1" step="0.1" value={siteSettings.hero_video_opacity || 0.6} onChange={e => setSiteSettings({ ...siteSettings, hero_video_opacity: e.target.value })} class="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer mt-3" />
+                                                <input type="range" min="2" max="9" step="0.5" value={siteSettings.hero_title_size || '5'} onChange={e => setSiteSettings({ ...siteSettings, hero_title_size: e.target.value })} class="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer mt-3" />
+                                                <div class="flex justify-between text-[9px] text-stone-400 mt-1"><span>Pequeno</span><span>Grande</span></div>
+                                            </div>
+                                            {/* Cor do título */}
+                                            <div>
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 mb-1 block">Cor do Título</label>
+                                                <div class="flex gap-2 items-center">
+                                                    <input type="color" value={siteSettings.hero_text_color || '#ffffff'} onChange={e => setSiteSettings({ ...siteSettings, hero_text_color: e.target.value })} class="h-10 w-14 rounded-xl cursor-pointer border border-stone-200 p-0.5 bg-stone-50" />
+                                                    <input value={siteSettings.hero_text_color || '#ffffff'} onChange={e => setSiteSettings({ ...siteSettings, hero_text_color: e.target.value })} class="flex-1 px-4 py-2 bg-stone-50 border rounded-xl text-sm font-mono" placeholder="#ffffff" />
+                                                </div>
+                                            </div>
+                                            {/* Opacidade */}
+                                            <div class="md:col-span-2">
+                                                <label class="text-[10px] uppercase font-bold text-stone-400 flex justify-between mb-1 block">
+                                                    <span>Escurecimento sobre o Banner</span>
+                                                    <span>{Math.round((parseFloat(siteSettings.hero_video_opacity) || 0) * 100)}%</span>
+                                                </label>
+                                                <input type="range" min="0" max="1" step="0.05" value={siteSettings.hero_video_opacity || 0} onChange={e => setSiteSettings({ ...siteSettings, hero_video_opacity: e.target.value })} class="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer mt-1" />
+                                                <div class="flex justify-between text-[9px] text-stone-400 mt-1"><span>Sem escurecer (0%)</span><span>Escuro total (100%)</span></div>
                                             </div>
 
                                             <div class="md:col-span-2 space-y-4 pt-4 border-t border-stone-100">

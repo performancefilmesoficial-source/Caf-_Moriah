@@ -38,6 +38,7 @@ router.put('/', authenticateJWT, upload.fields([
 ]), async (req, res, next) => {
     const {
         hero_title, hero_text, hero_video_opacity, hero_text_align,
+        hero_font_family, hero_title_size, hero_text_color,
         about_title, about_text_1, about_text_2, about_image_align,
         site_title, whatsapp_number, instagram_url, contact_email,
         cnpj, address, footer_text
@@ -88,10 +89,12 @@ router.put('/', authenticateJWT, upload.fields([
         await db.query(
             `UPDATE site_settings SET
                 hero_title=?, hero_text=?, hero_video=?, hero_video_opacity=?, hero_text_align=?,
+                hero_font_family=?, hero_title_size=?, hero_text_color=?,
                 about_title=?, about_text_1=?, about_text_2=?, about_image=?, about_image_align=?,
                 hero_banners=?, updated_at=CURRENT_TIMESTAMP
              WHERE id=?`,
             [hero_title, hero_text, hero_video, hero_video_opacity, hero_text_align,
+             hero_font_family || 'sans', hero_title_size || '5', hero_text_color || '#ffffff',
              about_title, about_text_1, about_text_2, about_image, about_image_align,
              finalBannersJson, settingsId]
         );

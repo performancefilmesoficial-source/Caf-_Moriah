@@ -122,7 +122,8 @@ async function initTables(db, mysql) {
     const siteSettingsCols = [
         'hero_video_opacity TEXT', 'hero_text_align TEXT', 'about_image_align TEXT', 'hero_banners MEDIUMTEXT',
         'site_title TEXT', 'logo_url TEXT', 'favicon_url TEXT', 'whatsapp_number TEXT', 'instagram_url TEXT',
-        'contact_email TEXT', 'cnpj TEXT', 'address TEXT', 'footer_text TEXT'
+        'contact_email TEXT', 'cnpj TEXT', 'address TEXT', 'footer_text TEXT',
+        "hero_font_family TEXT DEFAULT 'sans'", "hero_title_size TEXT DEFAULT '5'", "hero_text_color TEXT DEFAULT '#ffffff'"
     ];
     for (const col of siteSettingsCols) {
         try {

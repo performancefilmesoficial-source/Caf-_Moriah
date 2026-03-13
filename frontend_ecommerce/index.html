@@ -7,6 +7,9 @@
     <title>Moriah Café</title>
     <link rel="icon" id="favicon-link" type="image/png" href="favicon.png">
     <link rel="apple-touch-icon" id="apple-favicon-link" href="favicon.png">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Cormorant+Garamond:wght@600;700&family=Montserrat:wght@700;900&family=Raleway:wght@700;900&display=swap" rel="stylesheet">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -106,6 +109,15 @@
         </div>
     </div>
     <script type="text/babel">
+        const FONT_MAP = {
+            'sans':       'system-ui, sans-serif',
+            'serif':      'Georgia, serif',
+            'playfair':   "'Playfair Display', serif",
+            'cormorant':  "'Cormorant Garamond', serif",
+            'montserrat': "'Montserrat', sans-serif",
+            'raleway':    "'Raleway', sans-serif",
+        };
+
         function App() {
             const [cart, setCart] = React.useState([]);
             const [isCartOpen, setIsCartOpen] = React.useState(false);
@@ -217,6 +229,7 @@
                 hero_text: 'Grãos selecionados das melhores origens do Brasil...',
                 hero_video: '',
                 hero_banners: '[]',
+                hero_font_family: 'sans', hero_title_size: '5', hero_text_color: '#ffffff',
                 about_title: 'Descubra Nossa História',
                 about_text_1: 'Nascida do amor profundo...',
                 about_text_2: 'Trabalhamos lado a lado...',
@@ -393,7 +406,12 @@
 
                         <div className={`relative z-10 ${siteSettings.hero_text_align || 'text-center'} max-w-4xl mx-auto px-4 mt-8`}>
                             {siteSettings.hero_title && (
-                                <h1 className="font-sans text-4xl md:text-6xl lg:text-8xl mb-6 font-bold leading-tight drop-shadow-2xl whitespace-pre-line animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                                <h1 className="mb-6 font-bold leading-tight drop-shadow-2xl whitespace-pre-line animate-in fade-in slide-in-from-bottom-4 duration-1000"
+                                    style={{
+                                        fontFamily: FONT_MAP[siteSettings.hero_font_family] || 'system-ui, sans-serif',
+                                        fontSize: siteSettings.hero_title_size ? `clamp(2rem, ${siteSettings.hero_title_size}vw, ${siteSettings.hero_title_size}rem)` : 'clamp(2rem, 5vw, 5rem)',
+                                        color: siteSettings.hero_text_color || '#ffffff'
+                                    }}>
                                     {siteSettings.hero_title}
                                 </h1>
                             )}
