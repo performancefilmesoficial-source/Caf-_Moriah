@@ -89,12 +89,10 @@ router.put('/', authenticateJWT, upload.fields([
         await db.query(
             `UPDATE site_settings SET
                 hero_title=?, hero_text=?, hero_video=?, hero_video_opacity=?, hero_text_align=?,
-                hero_font_family=?, hero_title_size=?, hero_text_color=?,
                 about_title=?, about_text_1=?, about_text_2=?, about_image=?, about_image_align=?,
                 hero_banners=?, updated_at=CURRENT_TIMESTAMP
              WHERE id=?`,
             [hero_title, hero_text, hero_video, hero_video_opacity, hero_text_align,
-             hero_font_family || 'sans', hero_title_size || '5', hero_text_color || '#ffffff',
              about_title, about_text_1, about_text_2, about_image, about_image_align,
              finalBannersJson, settingsId]
         );
@@ -113,6 +111,16 @@ router.put('/', authenticateJWT, upload.fields([
             );
         } catch (extErr) {
             console.warn('[SETTINGS] Colunas estendidas indisponíveis:', extErr.message);
+        }
+
+        // Colunas tipográficas (adicionadas na migration — VARCHAR permite DEFAULT no MySQL 5.7)
+        try {
+            await db.query(
+                `UPDATE site_settings SET hero_font_family=?, hero_title_size=?, hero_text_color=? WHERE id=?`,
+                [hero_font_family || 'sans', hero_title_size || '5', hero_text_color || '#ffffff', settingsId]
+            );
+        } catch (typoErr) {
+            console.warn('[SETTINGS] Colunas tipográficas indisponíveis:', typoErr.message);
         }
 
         res.json({
