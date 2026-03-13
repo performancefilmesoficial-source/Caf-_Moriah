@@ -659,9 +659,59 @@
                             addNotification('Nova Venda', `Uma venda de ${items.length} itens foi processada.`, 'success');
                         }
                     });
+                    // ip-result: backend confirma resultado do InfinitePay em tempo real
+                    // Isso garante que a aba ORIGINAL do PDV (com o modal de aguardo) seja
+                    // notificada imediatamente, mesmo que o InfinitePay abra a result_url em nova aba.
+                    es.addEventListener('ip-result', (e) => {
+                        const { sale_id, result } = JSON.parse(e.data);
+                        const waiting = ipWaitingRef.current;
+                        if (!waiting || sale_id !== waiting.sale_id) return;
+                        clearInterval(ipPollingRef.current);
+                        setIpWaiting(null);
+                        setIsManualConfirmOpen(false);
+                        localStorage.removeItem('ip_pending');
+                        if (result === 'approved') {
+                            setCart([]);
+                            setDiscount(0);
+                            setLastSale({ id: sale_id, total: waiting.total, method: waiting.method, items: cartRef.current });
+                            addNotification('Venda Confirmada', 'InfinitePay: pagamento aprovado!', 'success');
+                            setIsSuccessModalOpen(true);
+                        } else {
+                            addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
+                            setIsCheckoutOpen(true);
+                        }
+                    });
                     es.onerror = () => { /* reconexão automática pelo browser */ };
                 } catch (_) { /* SSE não disponível offline */ }
                 return () => es && es.close();
+            }, []);
+
+            // BroadcastChannel: comunica resultado do InfinitePay entre abas do mesmo domínio.
+            // Quando a result_url abre em nova aba, essa aba envia o resultado para a aba original.
+            useEffect(() => {
+                if (!window.BroadcastChannel) return;
+                const bc = new BroadcastChannel('moriah_pdv_ip');
+                bc.onmessage = (event) => {
+                    const msg = event.data;
+                    if (msg.type !== 'ip_result') return;
+                    const waiting = ipWaitingRef.current;
+                    if (!waiting || msg.sale_id !== waiting.sale_id) return;
+                    clearInterval(ipPollingRef.current);
+                    setIpWaiting(null);
+                    setIsManualConfirmOpen(false);
+                    localStorage.removeItem('ip_pending');
+                    if (msg.result === 'approved') {
+                        setCart([]);
+                        setDiscount(0);
+                        setLastSale({ id: msg.sale_id, total: waiting.total, method: waiting.method, items: cartRef.current });
+                        addNotification('Venda Confirmada', 'InfinitePay: pagamento aprovado!', 'success');
+                        setIsSuccessModalOpen(true);
+                    } else {
+                        addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
+                        setIsCheckoutOpen(true);
+                    }
+                };
+                return () => bc.close();
             }, []);
             const [sales, setSales] = useState([]);
             const [isLoadingSales, setIsLoadingSales] = useState(false);
@@ -727,6 +777,11 @@
             const [ipWaiting, setIpWaiting] = useState(null); // { sale_id, method }
             const [isManualConfirmOpen, setIsManualConfirmOpen] = useState(false);
             const ipPollingRef = React.useRef(null);
+            // Refs para acesso à state atual dentro de closures persistentes (SSE, BroadcastChannel)
+            const ipWaitingRef = React.useRef(null);
+            const cartRef = React.useRef([]);
+            useEffect(() => { ipWaitingRef.current = ipWaiting; }, [ipWaiting]);
+            useEffect(() => { cartRef.current = cart; }, [cart]);
             const [siteSettings, setSiteSettings] = useState({
                 hero_title: '', hero_text: '', hero_video: '',
                 hero_banners: '[]',
@@ -833,60 +888,78 @@
                 else localStorage.removeItem('moriah_current_user');
             }, [currentUser]);
 
-            // Detecta retorno do InfinitePay (?ip_paid=sale_id na URL) ou retorno nativo do app (?tap_result=1&sale_id=...)
+            // Detecta retorno do InfinitePay na URL:
+            //  ?ip_paid=X    → pago (aprovado)
+            //  ?ip_cancelled=X → cancelado/recusado
+            // Esta aba pode ser a aba ORIGINAL (mesmo tab do PDV) OU uma nova aba aberta pelo InfinitePay.
+            // Em ambos os casos, o resultado é transmitido via BroadcastChannel para todas as abas abertas.
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 const paidId = params.get('ip_paid');
+                const cancelledId = params.get('ip_cancelled');
                 const tapResult = params.get('tap_result');
                 const saleId = params.get('sale_id');
-                const targetId = saleId || paidId;
 
+                const targetId = paidId || cancelledId || saleId;
                 if (!targetId) return;
 
-                console.log("[PDV] Processando retorno de pagamento:", { targetId, tapResult });
+                const isApproved = !!paidId;
+                const isCancelled = !!cancelledId;
+                console.log("[PDV] Retorno InfinitePay na URL:", { targetId, isApproved, isCancelled });
 
-                // Pequeno delay para garantir que o resto da app carregou (especialmente se houve redirect)
+                // Limpa a URL imediatamente para evitar re-processamento
+                window.history.replaceState({}, '', window.location.pathname);
+
+                // Notifica todas as abas abertas do PDV (incluindo a aba original com o modal de aguardo)
+                if (window.BroadcastChannel) {
+                    try {
+                        const bc = new BroadcastChannel('moriah_pdv_ip');
+                        bc.postMessage({ type: 'ip_result', sale_id: parseInt(targetId), result: isApproved ? 'approved' : 'cancelled' });
+                        bc.close();
+                    } catch (_) {}
+                }
+
+                // Também processa localmente (caso esta seja a aba original ou única aba)
                 const timer = setTimeout(() => {
                     const pending = JSON.parse(localStorage.getItem('ip_pending') || 'null');
-                    
-                    apiFetch(`/api/pdv/infinitepay/status/${targetId}`)
-                        .then(r => {
-                            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                            return r.json();
-                        })
-                        .then(data => {
-                            console.log("[PDV] Status final do pagamento:", data);
-                            if (data.paid) {
-                                setCart([]);
-                                setDiscount(0);
-                                if (pending) {
-                                    setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
-                                }
-                                setIsSuccessModalOpen(true);
-                                localStorage.removeItem('ip_pending');
-                                window.history.replaceState({}, '', window.location.pathname);
-                            } else {
-                                if (tapResult) {
-                                    // Pagamento não confirmado: mostra modal para confirmar na mão ou cancelar
-                                    setIpWaiting({
-                                        sale_id: parseInt(targetId),
-                                        total: pending?.total ?? 0,
-                                        method: pending?.method ?? 'Cartão',
-                                        checkout_url: null
-                                    });
+
+                    if (isApproved) {
+                        apiFetch(`/api/pdv/infinitepay/status/${targetId}`)
+                            .then(r => r.ok ? r.json() : null)
+                            .then(data => {
+                                if (data?.paid) {
+                                    // Aba original: polling pode já ter tratado; evita duplicação verificando ipWaiting
+                                    if (!ipWaitingRef.current) return; // SSE/BroadcastChannel já tratou
+                                    clearInterval(ipPollingRef.current);
+                                    setIpWaiting(null);
+                                    setIsManualConfirmOpen(false);
+                                    setCart([]);
+                                    setDiscount(0);
+                                    if (pending) setLastSale({ total: pending.total, method: pending.method, items: pending.cart });
+                                    setIsSuccessModalOpen(true);
+                                    localStorage.removeItem('ip_pending');
+                                } else if (tapResult && pending) {
+                                    // Fallback: pagamento não confirmado ainda — abre confirmação manual
+                                    if (!ipWaitingRef.current) return;
+                                    setIpWaiting({ sale_id: parseInt(targetId), total: pending.total ?? 0, method: pending.method ?? 'Cartão', checkout_url: null });
                                     setIsManualConfirmOpen(true);
                                     localStorage.removeItem('ip_pending');
-                                    window.history.replaceState({}, '', window.location.pathname);
                                 }
-                            }
-                        })
-                        .catch(err => {
-                            console.error("[PDV] Erro crítico ao verificar status do pagamento:", err);
-                        });
-                }, 1000);
+                            })
+                            .catch(err => console.error("[PDV] Erro ao verificar status:", err));
+                    } else if (isCancelled) {
+                        if (!ipWaitingRef.current) return; // já tratado por SSE/BroadcastChannel
+                        clearInterval(ipPollingRef.current);
+                        setIpWaiting(null);
+                        setIsManualConfirmOpen(false);
+                        localStorage.removeItem('ip_pending');
+                        addNotification('Pagamento Cancelado', 'Volte ao checkout para tentar novamente.', 'warning');
+                        setIsCheckoutOpen(true);
+                    }
+                }, 800);
 
                 return () => clearTimeout(timer);
-            }, [currentUser]); // currentUser ajuda a disparar quando o login estabiliza
+            }, [currentUser]);
 
             // Busca vendas do banco de dados ao abrir a aba de vendas
             // Auto-refresh a cada 30s para capturar pedidos online automaticamente

@@ -3,7 +3,7 @@ const express = require('express');
 const axios = require('axios');
 const { getDb } = require('../config/database');
 const { authenticateJWT } = require('../middleware/auth');
-const { broadcastStockUpdate } = require('../services/sseService');
+const { broadcastStockUpdate, broadcast } = require('../services/sseService');
 
 const router = express.Router();
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
@@ -286,11 +286,18 @@ router.get('/receipt/:sale_id', async (req, res, next) => {
 });
 
 // GET /api/pdv/tap-result — callback do InfinitePay após pagamento tap (sem auth)
-// InfinitePay redireciona para cá ao concluir. Confirma a venda no DB e redireciona
-// para o PDV com ip_paid=X, que o polling/useEffect já sabe tratar.
+// InfinitePay redireciona para cá ao concluir (aprovado ou cancelado).
+// Atualiza a venda no DB, emite SSE ip-result para o PDV aberto, e redireciona.
 router.get('/tap-result', async (req, res) => {
     console.log('[TAP RESULT] InfinitePay callback params:', JSON.stringify(req.query));
     const { sale_id, order_id } = req.query;
+
+    // InfinitePay pode enviar o status em vários campos dependendo da versão
+    const rawStatus = (req.query.status || req.query.result || req.query.transaction_status || 'approved').toLowerCase();
+    const isApproved = !rawStatus.includes('cancel') && !rawStatus.includes('denied') &&
+                       !rawStatus.includes('declined') && !rawStatus.includes('fail') &&
+                       !rawStatus.includes('recusad') && !rawStatus.includes('error');
+
     const saleId = sale_id || (order_id ? order_id.replace('moriah-pdv-', '') : null);
     if (!saleId) return res.redirect('/');
 
@@ -298,15 +305,23 @@ router.get('/tap-result', async (req, res) => {
         const db = getDb();
         const [rows] = await db.query('SELECT status FROM sales WHERE id = ?', [saleId]);
         if (rows.length && rows[0].status === 'Aguardando Pagamento') {
-            await db.run("UPDATE sales SET status = 'Pago' WHERE id = ?", [saleId]);
-            console.log(`[TAP RESULT] Venda #${saleId} → Pago`);
+            if (isApproved) {
+                await db.run("UPDATE sales SET status = 'Pago' WHERE id = ?", [saleId]);
+                console.log(`[TAP RESULT] Venda #${saleId} → Pago`);
+            } else {
+                // noStock: itens ainda estão no carrinho do operador
+                await db.run("UPDATE sales SET status = 'Cancelado' WHERE id = ?", [saleId]);
+                console.log(`[TAP RESULT] Venda #${saleId} → Cancelado (status: ${rawStatus})`);
+            }
         }
+        // Notifica o PDV em tempo real via SSE (a aba original do PDV recebe imediatamente)
+        broadcast('ip-result', { sale_id: parseInt(saleId), result: isApproved ? 'approved' : 'cancelled' });
     } catch (e) {
         console.error('[TAP RESULT] Erro DB:', e.message);
     }
 
-    // Redireciona para o PDV — o useEffect ip_paid já trata isso
-    res.redirect(`/?ip_paid=${saleId}`);
+    // Redireciona para o PDV — o useEffect ip_paid/ip_cancelled e o BroadcastChannel tratam isso
+    res.redirect(isApproved ? `/?ip_paid=${saleId}` : `/?ip_cancelled=${saleId}`);
 });
 
 // POST /api/pdv/send-receipt
